@@ -468,6 +468,7 @@ class RandomFlip:
         return labels
 
 
+    
 class LetterBox:
     """Resize image and padding for detection, instance segmentation, pose."""
 
@@ -724,9 +725,9 @@ def classify_transforms(size=224, mean=(0.0, 0.0, 0.0), std=(1.0, 1.0, 1.0)):  #
     if not isinstance(size, int):
         raise TypeError(f'classify_transforms() size {size} must be integer, not (list, tuple)')
     if any(mean) or any(std):
-        return T.Compose([CenterCrop(size), ToTensor(), T.Normalize(mean, std, inplace=True)])
+        return T.Compose([Rotation(), ClassifyLetterBox(size),CenterCrop(size), ToTensor(), T.Normalize(mean, std, inplace=True)])
     else:
-        return T.Compose([CenterCrop(size), ToTensor()])
+        return T.Compose([Rotation(), ClassifyLetterBox(size), CenterCrop(size),ToTensor()])
 
 
 def classify_albumentations(
@@ -819,3 +820,20 @@ class ToTensor:
         im = im.half() if self.half else im.float()  # uint8 to fp16/32
         im /= 255.0  # 0-255 to 0.0-1.0
         return im
+
+class Rotation:
+
+    def __init__(self, p=0.5, direction='horizontal', flip_idx=None) -> None:
+        assert direction in ['horizontal', 'vertical'], f'Support direction `horizontal` or `vertical`, got {direction}'
+        assert 0 <= p <= 1.0
+
+        self.p = p
+        self.direction = direction
+        self.flip_idx = flip_idx
+
+    def __call__(self, img):
+        """Resize image and padding for detection, instance segmentation, pose."""
+        # Flip up-down
+        angle = random.randint(0,5)
+        img = np.rot90(img, k=angle)
+        return img
