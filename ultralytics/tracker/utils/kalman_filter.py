@@ -1,4 +1,4 @@
-# Ultralytics YOLO 🚀, AGPL-3.0 license
+# Ultralytics YOLO 🚀, GPL-3.0 license
 
 import numpy as np
 import scipy.linalg
@@ -27,7 +27,6 @@ class KalmanFilterXYAH:
     """
 
     def __init__(self):
-        """Initialize Kalman filter model matrices with motion and observation uncertainty weights."""
         ndim, dt = 4, 1.
 
         # Create Kalman filter model matrices.
@@ -137,7 +136,7 @@ class KalmanFilterXYAH:
             The Nx8 dimensional mean matrix of the object states at the previous
             time step.
         covariance : ndarray
-            The Nx8x8 dimensional covariance matrix of the object states at the
+            The Nx8x8 dimensional covariance matrics of the object states at the
             previous time step.
         Returns
         -------
@@ -254,7 +253,6 @@ class KalmanFilterXYWH:
     """
 
     def __init__(self):
-        """Initialize Kalman filter model matrices with motion and observation uncertainties."""
         ndim, dt = 4, 1.
 
         # Create Kalman filter model matrices.
@@ -364,7 +362,7 @@ class KalmanFilterXYWH:
             The Nx8 dimensional mean matrix of the object states at the previous
             time step.
         covariance : ndarray
-            The Nx8x8 dimensional covariance matrix of the object states at the
+            The Nx8x8 dimensional covariance matrics of the object states at the
             previous time step.
         Returns
         -------

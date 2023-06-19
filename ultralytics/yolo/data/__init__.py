@@ -2,8 +2,8 @@
 
 from .base import BaseDataset
 from .build import build_dataloader, build_yolo_dataset, load_inference_source
-from .own_dataset import ClassificationDataset, SemanticDataset, YOLODataset
+from .dataset import ClassificationDataset, YOLODataset, CustomDataset
 from .dataset_wrappers import MixAndRectDataset
 
-__all__ = ('BaseDataset', 'ClassificationDataset', 'MixAndRectDataset', 'SemanticDataset', 'YOLODataset',
+__all__ = ('BaseDataset', 'ClassificationDataset', 'CustomDataset', 'MixAndRectDataset', 'YOLODataset',
            'build_yolo_dataset', 'build_dataloader', 'load_inference_source')

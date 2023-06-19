@@ -1,4 +1,4 @@
-# Ultralytics YOLO 🚀, AGPL-3.0 license
+# Ultralytics YOLO 🚀, GPL-3.0 license
 
 import re
 from pathlib import Path
@@ -23,7 +23,7 @@ setup(
     name='ultralytics',  # name of pypi package
     version=get_version(),  # version of pypi package
     python_requires='>=3.7',
-    license='AGPL-3.0',
+    license='GPL-3.0',
     description='Ultralytics YOLOv8',
     long_description=README,
     long_description_content_type='text/markdown',
@@ -38,24 +38,15 @@ setup(
     include_package_data=True,
     install_requires=REQUIREMENTS + PKG_REQUIREMENTS,
     extras_require={
-        'dev': [
-            'check-manifest',
-            'pytest',
-            'pytest-cov',
-            'coverage',
-            'mkdocs-material',
-            'mkdocstrings[python]',
-            'mkdocs-redirects',  # for 301 redirects
-            'mkdocs-git-revision-date-localized-plugin',  # for created/updated dates
-        ],
-        'export': ['coremltools>=6.0', 'openvino-dev>=2022.3', 'tensorflowjs'],  # automatically installs tensorflow
-    },
+        'dev': ['check-manifest', 'pytest', 'pytest-cov', 'coverage', 'mkdocs-material', 'mkdocstrings[python]'],
+        'export': ['coremltools>=6.0', 'onnx', 'onnxsim', 'onnxruntime', 'openvino-dev>=2022.3'],
+        'tf': ['onnx2tf', 'sng4onnx', 'tflite_support', 'tensorflow']},
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)',
+        'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
@@ -68,7 +59,7 @@ setup(
         'Topic :: Scientific/Engineering :: Image Recognition',
         'Operating System :: POSIX :: Linux',
         'Operating System :: MacOS',
-        'Operating System :: Microsoft :: Windows', ],
+        'Operating System :: Microsoft :: Windows',],
     keywords='machine-learning, deep-learning, vision, ML, DL, AI, YOLO, YOLOv3, YOLOv5, YOLOv8, HUB, Ultralytics',
     entry_points={
         'console_scripts': ['yolo = ultralytics.yolo.cfg:entrypoint', 'ultralytics = ultralytics.yolo.cfg:entrypoint']})

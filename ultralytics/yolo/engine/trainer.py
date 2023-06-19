@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 from ultralytics.nn.tasks import attempt_load_one_weight, attempt_load_weights
 from ultralytics.yolo.cfg import get_cfg
-from ultralytics.yolo.data.utils import check_cls_dataset, check_det_dataset
+from ultralytics.yolo.data.utils import check_cls_dataset, check_det_dataset, check_cus_dataset
 from ultralytics.yolo.utils import (DEFAULT_CFG, LOGGER, ONLINE, RANK, ROOT, SETTINGS, TQDM_BAR_FORMAT, __version__,
                                     callbacks, clean_url, colorstr, emojis, yaml_save)
 from ultralytics.yolo.utils.autobatch import check_train_batch_size
@@ -118,6 +118,8 @@ class BaseTrainer:
         try:
             if self.args.task == 'classify':
                 self.data = check_cls_dataset(self.args.data)
+            elif self.args.task == 'custom':
+                self.data = check_cus_dataset(self.args.data)
             elif self.args.data.endswith('.yaml') or self.args.task in ('detect', 'segment'):
                 self.data = check_det_dataset(self.args.data)
                 if 'yaml_file' in self.data:
@@ -207,7 +209,7 @@ class BaseTrainer:
         self.model = self.model.to(self.device)
         self.set_model_attributes()
         # Check AMP
-        self.amp = torch.tensor(self.args.amp).to(self.device)  # True or False
+        self.amp = torch.tensor(False).to(self.device)  # True or False
         if self.amp and RANK in (-1, 0):  # Single-GPU and DDP
             callbacks_backup = callbacks.default_callbacks.copy()  # backup callbacks as check_amp() resets them
             self.amp = torch.tensor(check_amp(self.model), device=self.device)

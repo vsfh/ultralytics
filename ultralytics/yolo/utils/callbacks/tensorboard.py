@@ -32,7 +32,8 @@ def on_pretrain_routine_start(trainer):
 
 def on_batch_end(trainer):
     """Logs scalar statistics at the end of a training batch."""
-    _log_scalars(trainer.label_loss_items(trainer.tloss, prefix='train'), trainer.epoch + 1)
+    pass
+    # _log_scalars(trainer.label_loss_items(trainer.tloss, prefix='train'), trainer.epoch + 1)
 
 
 def on_fit_epoch_end(trainer):

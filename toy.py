@@ -6,25 +6,36 @@ import torch
 import cv2
 import shutil
 cls_dict = {
-    "侧位片":0,
-    "覆盖像":1,
-    "全景片":2,
-    "上颌合面像":3,
-    "下颌合面像":4,
-    "右45度微笑像":5,
-    "右45度像":6,
-    "右侧面微笑像":7,
-    "右侧面像":8,
-    "右侧咬合像":9,
-    "正面微笑像":10,
-    "正面像":11,
-    "正面咬合像":12,
-    "左侧咬合像":13
+    "侧位片":'00',
+    "覆盖像":'01',
+    "全景片":'02',
+    "上颌合面像":'03',
+    "下颌合面像":'04',
+    "右45度微笑像":'05',
+    "右45度像":'06',
+    "右侧面微笑像":'07',
+    "右侧面像":'08',
+    "右侧咬合像":'09',
+    "正面微笑像":'10',
+    "正面像":'11',
+    "正面咬合像":'12',
+    "左45度微笑像":'13',
+    "左45度像":'14',
+    "左侧面微笑像":'15',
+    "左侧面像":'16',
+    "左侧咬合像":'17',
+    "其他":'18'
 }
     
-def toy():
-    model = YOLO('/home/disk/github/ultralytics/runs/yolov8-cls.yaml')
-    model.train(data='/home/disk/data/classification/image_folder')
+
+def export():
+    model = YOLO('/home/vsfh/code/gitee/ultralytics-choho/runs/custom/train2/weights/best.pt')
+    success = model.export(dynamic=True,format="onnx")
+
+def train():
+    model = YOLO('/home/vsfh/code/gitee/ultralytics-choho/ultralytics/models/v8/custom/yolov8m-cus.yaml')
+    model._load('/home/vsfh/code/gitee/ultralytics-choho/runs/custom/train/weights/last.pt')
+    model.train(data='/mnt/e/data/classification/image_folder_04/')
     # results = model("/home/disk/github/ultralytics/data/example/C01002721169_profile.jpg") 
     # print(results)
     pass
@@ -36,39 +47,61 @@ def infer():
         dest_path = f'/home/disk/data/classification/error_2/{i:0{2}}'
         txt_path = f'/home/disk/data/classification/error_2/error_{i}.txt'
         os.makedirs(dest_path, exist_ok=True)
-        with open(txt_path,'w') as f:
-            for file in os.listdir(file_path):
-                pth = osp.join(file_path, file)
-                res = model(pth)
-                pred_cls = torch.argmax(res[0].probs)
-                if not pred_cls==i:
-                    shutil.copy(pth, osp.join(dest_path, file))
-                    f.write(pth+'\n')
-            f.close()
-        
+
+        for file in os.listdir(file_path):
+            pth = osp.join(file_path, file)
+            res = model(pth)
+            pred_cls = torch.argmax(res[0].probs)
+            if not pred_cls==i:
+                cv2.imshow('img', pth)
+                key = cv2.waitKey(0)
+                if key==127:
+                    os.remove(pth)
+                    print('Img deleted')
+    cv2.destroyAllWindows()
+
 def delete():
     with open('/home/disk/data/classification/error/error_13.txt', 'r') as f:
         lines = f.readlines()
     lines = [line.strip() for line in lines]
     for path in lines:
         os.remove(path)
-        
-
     
-def file_copy():
-    dest_path = '/home/disk/data/classification/image_folder/val'
-    src_path = '/home/disk/data/classification/2023-05-04-fussen_classification'
+def file_copy(mode='train'):
+    dest_path = f'/mnt/e/data/classification/image_folder_04/{mode}'
+    src_path = '/mnt/e/data/classification/2023-05-04-fussen_classification'
     for name in cls_dict.keys():
         os.makedirs(os.path.join(dest_path, str(cls_dict[name])), exist_ok=True)
-    for dir in os.listdir(src_path)[:20]:
+    img_list = os.listdir(src_path)
+    if mode=='val':
+        img_list = img_list[-500:]
+    else:
+        img_list = img_list[:-500]
+    for dir in os.listdir(src_path):
         for file in os.listdir(os.path.join(src_path, dir)):
-            if file.split('_')[0] in cls_dict.keys():
-                dest_file = dest_path+'/'+str(cls_dict[file.split('_')[0]])+'/'+dir+'.jpg'
+            if file.split('_')[0] in cls_dict.keys() and file.split('_')[1]=="正畸检查":
+                dest_file = dest_path+'/'+str(cls_dict[file.split('_')[0]])+'/'+dir+'_'+file.split('_')[2]
                 shutil.copy(os.path.join(src_path, dir, file), dest_file)
-                
+
+def copy_json():
+    src_path = '/mnt/e/data/classification/label'
+    inner_path = '/mnt/e/data/classification/label_inner'
+    inner_cls = ['03','04','09','12','17']
+    face_path = '/mnt/e/data/classification/label_face'
+    face_cls = ['05','06','07','08','10','11','13','14','15','16']
+    for cls in inner_cls:
+        folder_path = f'/mnt/e/data/classification/image_folder_04/val/{cls}'
+        for img_file in os.listdir(folder_path):
+            file_name = img_file.replace('jpg','json')
+            shutil.copy(os.path.join(src_path, file_name), os.path.join(inner_path, file_name))
+    for cls in face_cls:
+        folder_path = f'/mnt/e/data/classification/image_folder_04/val/{cls}'
+        for img_file in os.listdir(folder_path):
+            file_name = img_file.replace('jpg','json')
+            shutil.copy(os.path.join(src_path, file_name), os.path.join(face_path, file_name))
 def aug():
     from scipy import ndimage
-    img = cv2.imread('/home/disk/data/classification/image_folder/train/13/58437825598523069.jpg')
+    img = cv2.imread('/mnt/e/data/classification/toy/front.jpg')
     # Rotation and Scale
     R = np.eye(3, dtype=np.float32)
     a = 90
@@ -77,11 +110,16 @@ def aug():
     # s = 2 ** random.uniform(-scale, scale)
     R[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=s)
     img2 = ndimage.rotate(img, 45, reshape=False, cval=114)
-    cv2.imshow('1', img)
-    cv2.imshow('2', img2)
-    cv2.waitKey(0)
+    cv2.imwrite('/mnt/e/data/classification/toy/rot.jpg', img2)
+    # cv2.imshow('1', img)
+    # cv2.imshow('2', img2)
+    # cv2.waitKey(0)
     
-                
-# infer()
-infer()
+def read_json():
+    import json
+    with open('/mnt/e/data/classification/image_folder/train/05/58497756069232932_998.json', 'r') as f:
+        a = json.load(f)
+    print(a)
+if __name__=='__main__':
+    train()
                 

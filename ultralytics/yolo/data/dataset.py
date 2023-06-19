@@ -1,63 +1,58 @@
-# Ultralytics YOLO 🚀, AGPL-3.0 license
+# Ultralytics YOLO 🚀, GPL-3.0 license
 
 from itertools import repeat
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 
-import cv2
-import numpy as np
-import torch
 import torchvision
 from tqdm import tqdm
 
-from ..utils import LOCAL_RANK, NUM_THREADS, TQDM_BAR_FORMAT, is_dir_writeable
-from .augment import Compose, Format, Instances, LetterBox, classify_albumentations, classify_transforms, v8_transforms
+from ..utils import NUM_THREADS, TQDM_BAR_FORMAT, is_dir_writeable
+from .augment import *
 from .base import BaseDataset
-from .utils import HELP_URL, LOGGER, get_hash, img2label_paths, verify_image_label
+from .utils import HELP_URL, LOCAL_RANK, get_hash, img2label_paths, verify_image_label
 
 
 class YOLODataset(BaseDataset):
-    """
-    Dataset class for loading object detection and/or segmentation labels in YOLO format.
-
-    Args:
-        data (dict, optional): A dataset YAML dictionary. Defaults to None.
-        use_segments (bool, optional): If True, segmentation masks are used as labels. Defaults to False.
-        use_keypoints (bool, optional): If True, keypoints are used as labels. Defaults to False.
-
-    Returns:
-        (torch.utils.data.Dataset): A PyTorch dataset object that can be used for training an object detection model.
-    """
-    cache_version = '1.0.2'  # dataset labels *.cache version, >= 1.0.0 for YOLOv8
+    cache_version = '1.0.1'  # dataset labels *.cache version, >= 1.0.0 for YOLOv8
     rand_interp_methods = [cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
+    """YOLO Dataset.
+    Args:
+        img_path (str): image path.
+        prefix (str): prefix.
+    """
 
-    def __init__(self, *args, data=None, use_segments=False, use_keypoints=False, **kwargs):
+    def __init__(self,
+                 img_path,
+                 imgsz=640,
+                 cache=False,
+                 augment=True,
+                 hyp=None,
+                 prefix='',
+                 rect=False,
+                 batch_size=None,
+                 stride=32,
+                 pad=0.0,
+                 single_cls=False,
+                 use_segments=False,
+                 use_keypoints=False,
+                 names=None):
         self.use_segments = use_segments
         self.use_keypoints = use_keypoints
-        self.data = data
+        self.names = names
         assert not (self.use_segments and self.use_keypoints), 'Can not use both segments and keypoints.'
-        super().__init__(*args, **kwargs)
+        super().__init__(img_path, imgsz, cache, augment, hyp, prefix, rect, batch_size, stride, pad, single_cls)
 
     def cache_labels(self, path=Path('./labels.cache')):
-        """Cache dataset labels, check images and read shapes.
-        Args:
-            path (Path): path where to save the cache file (default: Path('./labels.cache')).
-        Returns:
-            (dict): labels.
-        """
+        # Cache dataset labels, check images and read shapes
         x = {'labels': []}
         nm, nf, ne, nc, msgs = 0, 0, 0, 0, []  # number missing, found, empty, corrupt, messages
         desc = f'{self.prefix}Scanning {path.parent / path.stem}...'
         total = len(self.im_files)
-        nkpt, ndim = self.data.get('kpt_shape', (0, 0))
-        if self.use_keypoints and (nkpt <= 0 or ndim not in (2, 3)):
-            raise ValueError("'kpt_shape' in data.yaml missing or incorrect. Should be a list with [number of "
-                             "keypoints, number of dims (2 for x,y or 3 for x,y,visible)], i.e. 'kpt_shape: [17, 3]'")
         with ThreadPool(NUM_THREADS) as pool:
             results = pool.imap(func=verify_image_label,
                                 iterable=zip(self.im_files, self.label_files, repeat(self.prefix),
-                                             repeat(self.use_keypoints), repeat(len(self.data['names'])), repeat(nkpt),
-                                             repeat(ndim)))
+                                             repeat(self.use_keypoints), repeat(len(self.names))))
             pbar = tqdm(results, desc=desc, total=total, bar_format=TQDM_BAR_FORMAT)
             for im_file, lb, shape, segments, keypoint, nm_f, nf_f, ne_f, nc_f, msg in pbar:
                 nm += nm_f
@@ -81,7 +76,7 @@ class YOLODataset(BaseDataset):
             pbar.close()
 
         if msgs:
-            LOGGER.info('\n'.join(msgs))
+            LOGGER.info('/n'.join(msgs))
         if nf == 0:
             LOGGER.warning(f'{self.prefix}WARNING ⚠️ No labels found in {path}. {HELP_URL}')
         x['hash'] = get_hash(self.label_files + self.im_files)
@@ -99,14 +94,11 @@ class YOLODataset(BaseDataset):
         return x
 
     def get_labels(self):
-        """Returns dictionary of labels for YOLO training."""
-        self.label_files = img2label_paths(self.im_files)
+        if self.label_files is None:
+            self.label_files = img2label_paths(self.im_files)
         cache_path = Path(self.label_files[0]).parent.with_suffix('.cache')
         try:
-            import gc
-            gc.disable()  # reduce pickle load time https://github.com/ultralytics/ultralytics/pull/1585
             cache, exists = np.load(str(cache_path), allow_pickle=True).item(), True  # load dict
-            gc.enable()
             assert cache['version'] == self.cache_version  # matches current version
             assert cache['hash'] == get_hash(self.label_files + self.im_files)  # identical hash
         except (FileNotFoundError, AssertionError, AttributeError):
@@ -114,11 +106,11 @@ class YOLODataset(BaseDataset):
 
         # Display cache
         nf, nm, ne, nc, n = cache.pop('results')  # found, missing, empty, corrupt, total
-        if exists and LOCAL_RANK in (-1, 0):
+        if exists and LOCAL_RANK in {-1, 0}:
             d = f'Scanning {cache_path}... {nf} images, {nm + ne} backgrounds, {nc} corrupt'
             tqdm(None, desc=self.prefix + d, total=n, initial=n, bar_format=TQDM_BAR_FORMAT)  # display cache results
             if cache['msgs']:
-                LOGGER.info('\n'.join(cache['msgs']))  # display warnings
+                LOGGER.info('/n'.join(cache['msgs']))  # display warnings
         if nf == 0:  # number of labels found
             raise FileNotFoundError(f'{self.prefix}No labels found in {cache_path}, can not start training. {HELP_URL}')
 
@@ -128,8 +120,9 @@ class YOLODataset(BaseDataset):
         self.im_files = [lb['im_file'] for lb in labels]  # update im_files
 
         # Check if the dataset is all boxes or all segments
-        lengths = ((len(lb['cls']), len(lb['bboxes']), len(lb['segments'])) for lb in labels)
-        len_cls, len_boxes, len_segments = (sum(x) for x in zip(*lengths))
+        len_cls = sum(len(lb['cls']) for lb in labels)
+        len_boxes = sum(len(lb['bboxes']) for lb in labels)
+        len_segments = sum(len(lb['segments']) for lb in labels)
         if len_segments and len_boxes != len_segments:
             LOGGER.warning(
                 f'WARNING ⚠️ Box and segment counts should be equal, but got len(segments) = {len_segments}, '
@@ -143,7 +136,6 @@ class YOLODataset(BaseDataset):
 
     # TODO: use hyp config to set all these augmentations
     def build_transforms(self, hyp=None):
-        """Builds and appends transforms to the list."""
         if self.augment:
             hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
             hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
@@ -160,15 +152,21 @@ class YOLODataset(BaseDataset):
                    mask_overlap=hyp.overlap_mask))
         return transforms
 
+    def build_load_transforms(self, hyp=None):
+        transforms = Compose([
+            Normal_Rot(p=hyp.get('normal_rot', 0.)),
+            ChannelShuffle(p=hyp.get('channel_shuffle', 0.)),
+        ])
+        return transforms
+
     def close_mosaic(self, hyp):
-        """Sets mosaic, copy_paste and mixup options to 0.0 and builds transformations."""
         hyp.mosaic = 0.0  # set mosaic ratio=0.0
         hyp.copy_paste = 0.0  # keep the same behavior as previous v8 close-mosaic
         hyp.mixup = 0.0  # keep the same behavior as previous v8 close-mosaic
         self.transforms = self.build_transforms(hyp)
 
     def update_labels_info(self, label):
-        """custom your label format here."""
+        """custom your label format here"""
         # NOTE: cls is not with bboxes now, classification and semantic segmentation need an independent cls label
         # we can make it also support classification and semantic segmentation by add or remove some dict keys there.
         bboxes = label.pop('bboxes')
@@ -181,7 +179,6 @@ class YOLODataset(BaseDataset):
 
     @staticmethod
     def collate_fn(batch):
-        """Collates data samples into batches."""
         new_batch = {}
         keys = batch[0].keys()
         values = list(zip(*[list(b.values()) for b in batch]))
@@ -203,6 +200,7 @@ class YOLODataset(BaseDataset):
 class ClassificationDataset(torchvision.datasets.ImageFolder):
     """
     YOLOv5 Classification Dataset.
+
     Arguments
         root:  Dataset path
         transform:  torchvision transforms, used by default
@@ -210,7 +208,6 @@ class ClassificationDataset(torchvision.datasets.ImageFolder):
     """
 
     def __init__(self, root, augment, imgsz, cache=False):
-        """Initialize YOLO object with root, image size, augmentations, and cache settings"""
         super().__init__(root=root)
         self.torch_transforms = classify_transforms(imgsz)
         self.album_transforms = classify_albumentations(augment, imgsz) if augment else None
@@ -219,7 +216,6 @@ class ClassificationDataset(torchvision.datasets.ImageFolder):
         self.samples = [list(x) + [Path(x[0]).with_suffix('.npy'), None] for x in self.samples]  # file, index, npy, im
 
     def __getitem__(self, i):
-        """Returns subset of data and targets corresponding to given indices."""
         f, j, fn, im = self.samples[i]  # filename, index, filename.with_suffix('.npy'), image
         if self.cache_ram and im is None:
             im = self.samples[i][3] = cv2.imread(f)
@@ -238,10 +234,115 @@ class ClassificationDataset(torchvision.datasets.ImageFolder):
     def __len__(self) -> int:
         return len(self.samples)
 
-
+import os.path as osp
+import os
+import json
+from scipy.spatial.transform import Rotation as R
+import albumentations as A
 # TODO: support semantic segmentation
-class SemanticDataset(BaseDataset):
+class CustomDataset(torchvision.datasets.ImageFolder):
+    """
+    YOLOv5 Classification Dataset.
 
-    def __init__(self):
-        """Initialize a SemanticDataset object."""
-        pass
+    Arguments
+        root:  Dataset path
+        transform:  torchvision transforms, used by default
+        album_transform: Albumentations transforms, used if installed
+    """
+    def __init__(self, root, augment, imgsz, cache=False):
+        super().__init__(root=root)
+        self.torch_transforms = custom_transforms(imgsz)
+        self.album_transforms_1 = A.Compose([
+                                    A.RandomBrightnessContrast(p=0.2),
+                                    A.GaussNoise(p=0.2)
+                                ])
+        self.cache_ram = cache is True or cache == 'ram'
+        self.cache_disk = cache == 'disk'
+        self.samples = [list(x) + [Path(x[0]).with_suffix('.npy'), None] for x in self.samples]  # file, index, npy, im
+        self.inner_path = '/mnt/e/data/classification/label_inner'
+        self.inner_cls = ['03','04','09','17']
+        self.face_path = '/mnt/e/data/classification/label_face'
+        self.smile_cls = ['05','07','10','13','15']
+        self.face_cls = ['05','06','07','08','10','11','13','14','15','16']
+        self.project = {
+            '18':['其他',0],
+            '00':['侧位片',1],
+            '01':['覆盖像',2],
+            '02':['全景片',3],
+            '03':['上颌合面像',4],
+            '04':['下颌合面像',5],
+            '09':['右侧咬合像',6],
+            '12':['正面咬合像',7],
+            '17':['左侧咬合像',8]
+        }
+
+
+
+    def __getitem__(self, i):
+        f, j, fn, im = self.samples[i]  # filename, index, filename.with_suffix('.npy'), image
+        if self.cache_ram and im is None:
+            im = self.samples[i][3] = cv2.imread(f)
+        elif self.cache_disk:
+            if not fn.exists():  # load npy
+                np.save(fn.as_posix(), cv2.imread(f))
+            im = np.load(fn)
+        else:  # read image
+            im = cv2.imread(f)  # BGR
+
+        transformed = self.album_transforms_1(image=im)
+        im = transformed["image"]
+
+        k = np.random.randint(-2.5,3)
+        im = np.rot90(im, k)
+        rot_matrix = R.from_euler('xyz',[0,0,-90*k], degrees=True).as_matrix()
+        sample = self.torch_transforms(im)
+        
+        proj_cls = 0
+        json_path = None
+        basename = f.split('/')[-2]
+        if basename in self.project.keys():
+            proj_cls = self.project[basename][1]
+        elif basename in self.smile_cls:
+            proj_cls = 9
+        elif basename in self.face_cls:
+            assert not basename in self.smile_cls
+            proj_cls = 10
+            
+        if basename in self.inner_cls:
+            json_path = self.inner_path
+        elif basename in self.face_cls:
+            json_path = self.face_path
+
+        if not json_path is None:
+            file_json_path = osp.join(json_path, f.split('/')[-1].replace('jpg','json'))
+            with open(file_json_path, 'r') as f:
+                context = json.load(f)
+                matrix = np.array(context['euler'])
+                if len(matrix.shape) == 3:
+                    matrix = matrix[0]
+                if len(matrix.shape) == 1:
+                    matrix = np.eye(3,3)
+        else:
+            matrix = R.from_euler('xyz', [0,-90,0], degrees=True).as_matrix()
+        pose = (rot_matrix@matrix).astype(np.float32)
+
+
+        return {'img': sample, 'cls': proj_cls, 'pose': pose}
+
+    def __len__(self) -> int:
+        return len(self.samples)
+        # return 32
+if __name__=="__main__":
+    import tqdm
+    from torch.utils.data import DataLoader
+    ds = CustomDataset('/mnt/e/data/classification/image_folder_04/', False, 114)
+    dl = DataLoader(ds, batch_size=32, num_workers=16)
+    print(len(ds))
+    i = 0
+    for m in dl:
+        i += 1
+        if not i %100:
+            print(i)
+        continue
+        # print(ds[-m]['img'].mean())
+        # break
