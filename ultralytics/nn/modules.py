@@ -652,5 +652,5 @@ class Custom(nn.Module):
 
         pred = torch.cat((pose, cls), 1)
 
-        # return pred
+        return pred
         return pred if self.training else (pose, cls.softmax(1))

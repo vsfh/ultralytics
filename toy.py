@@ -29,13 +29,13 @@ cls_dict = {
     
 
 def export():
-    model = YOLO('/home/vsfh/code/gitee/ultralytics-choho/runs/custom/train2/weights/best.pt')
+    model = YOLO('./runs/custom/train/weights/last.pt')
     success = model.export(dynamic=True,format="onnx")
 
 def train():
-    model = YOLO('/home/vsfh/code/gitee/ultralytics-choho/ultralytics/models/v8/custom/yolov8m-cus.yaml')
-    model._load('/home/vsfh/code/gitee/ultralytics-choho/runs/custom/train/weights/last.pt')
-    model.train(data='/mnt/e/data/classification/image_folder_04/')
+    model = YOLO('./ultralytics/models/v8/custom/yolov8m-cus.yaml')
+    # model._load('/home/vsfh/code/gitee/ultralytics-choho/runs/custom/train/weights/last.pt')
+    model.train(data='/data/shenfeihong/classification/image_folder_04/')
     # results = model("/home/disk/github/ultralytics/data/example/C01002721169_profile.jpg") 
     # print(results)
     pass
@@ -121,5 +121,5 @@ def read_json():
         a = json.load(f)
     print(a)
 if __name__=='__main__':
-    train()
+    export()
                 

@@ -260,9 +260,9 @@ class CustomDataset(torchvision.datasets.ImageFolder):
         self.cache_ram = cache is True or cache == 'ram'
         self.cache_disk = cache == 'disk'
         self.samples = [list(x) + [Path(x[0]).with_suffix('.npy'), None] for x in self.samples]  # file, index, npy, im
-        self.inner_path = '/mnt/e/data/classification/label_inner'
+        self.inner_path = '/data/shenfeihong/classification/label_inner'
         self.inner_cls = ['03','04','09','17']
-        self.face_path = '/mnt/e/data/classification/label_face'
+        self.face_path = '/data/shenfeihong/classification/label_face'
         self.smile_cls = ['05','07','10','13','15']
         self.face_cls = ['05','06','07','08','10','11','13','14','15','16']
         self.project = {
