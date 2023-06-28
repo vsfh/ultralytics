@@ -121,5 +121,5 @@ def read_json():
         a = json.load(f)
     print(a)
 if __name__=='__main__':
-    train()
+    export()
                 
