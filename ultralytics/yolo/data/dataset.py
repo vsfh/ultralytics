@@ -254,7 +254,8 @@ class CustomDataset(torchvision.datasets.ImageFolder):
         self.torch_transforms = custom_transforms(imgsz)
         self.album_transforms_1 = A.Compose([
                                     A.RandomBrightnessContrast(p=0.2),
-                                    A.GaussNoise(p=0.2)
+                                    A.GaussNoise(p=0.2),
+                                    A.Downscale(p=0.2)
                                 ])
         self.cache_ram = cache is True or cache == 'ram'
         self.cache_disk = cache == 'disk'
