@@ -29,35 +29,38 @@ cls_dict = {
     
 
 def export():
-    model = YOLO('./runs/custom/train/weights/last.pt')
+    model = YOLO('./runs/custom/train2/weights/best.pt')
     success = model.export(dynamic=True,format="onnx")
 
 def train():
     model = YOLO('./ultralytics/models/v8/custom/yolov8m-cus.yaml')
-    # model._load('/home/vsfh/code/gitee/ultralytics-choho/runs/custom/train/weights/last.pt')
+    # model = YOLO('./runs/custom/train/weights/last.pt')
+    # model._load('')
     model.train(data='/data/shenfeihong/classification/image_folder_04/')
     # results = model("/home/disk/github/ultralytics/data/example/C01002721169_profile.jpg") 
     # print(results)
     pass
 
 def infer():
-    model = YOLO('/home/disk/github/ultralytics/runs/classify/train2/weights/last.pt')
+    model = YOLO('./runs/custom/train/weights/last.pt')
     for i in range(14):
-        file_path = f'/home/disk/data/classification/image_folder/train/{i:0{2}}'
+        file_path = f'/data/shenfeihong/classification/image_folder_04/train/{i:0{2}}'
         dest_path = f'/home/disk/data/classification/error_2/{i:0{2}}'
         txt_path = f'/home/disk/data/classification/error_2/error_{i}.txt'
-        os.makedirs(dest_path, exist_ok=True)
+        # os.makedirs(dest_path, exist_ok=True)
 
         for file in os.listdir(file_path):
             pth = osp.join(file_path, file)
             res = model(pth)
             pred_cls = torch.argmax(res[0].probs)
-            if not pred_cls==i:
-                cv2.imshow('img', pth)
-                key = cv2.waitKey(0)
-                if key==127:
-                    os.remove(pth)
-                    print('Img deleted')
+            print(pred_cls, i)
+            break
+            # if not pred_cls==i:
+            #     cv2.imshow('img', pth)
+            #     key = cv2.waitKey(0)
+                # if key==127:
+                #     os.remove(pth)
+                #     print('Img deleted')
     cv2.destroyAllWindows()
 
 def delete():
@@ -122,4 +125,5 @@ def read_json():
     print(a)
 if __name__=='__main__':
     export()
+    # train()
                 
