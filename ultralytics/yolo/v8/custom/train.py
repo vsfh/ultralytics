@@ -240,7 +240,7 @@ class Loss:
 
         device = 'cuda:0'  # get model device
 
-        self.rot_hyp = 0.5
+        self.rot_hyp = 0.75
         self.cls_hyp = 1
 
         self.nc = num_cls  # number of classes

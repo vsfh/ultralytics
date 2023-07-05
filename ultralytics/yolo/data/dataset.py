@@ -239,6 +239,7 @@ import os
 import json
 from scipy.spatial.transform import Rotation as R
 import albumentations as A
+from random import sample
 # TODO: support semantic segmentation
 class CustomDataset(torchvision.datasets.ImageFolder):
     """
@@ -259,7 +260,10 @@ class CustomDataset(torchvision.datasets.ImageFolder):
                                 ])
         self.cache_ram = cache is True or cache == 'ram'
         self.cache_disk = cache == 'disk'
-        self.samples = [list(x) + [Path(x[0]).with_suffix('.npy'), None] for x in self.samples]  # file, index, npy, im
+        if augment:
+            self.samples = [list(x) + [Path(x[0]).with_suffix('.npy'), None] for x in self.samples]  # file, index, npy, im
+        else:
+            self.samples = [list(x) + [Path(x[0]).with_suffix('.npy'), None] for x in sample(self.samples, 16*100)]  # file, index, npy, im
         self.inner_path = '/data/shenfeihong/classification/label_inner'
         self.inner_cls = ['03','04','09','17']
         self.face_path = '/data/shenfeihong/classification/label_face'
@@ -276,6 +280,7 @@ class CustomDataset(torchvision.datasets.ImageFolder):
             '12':['正面咬合像',7],
             '17':['左侧咬合像',8]
         }
+        
 
 
 
@@ -294,9 +299,6 @@ class CustomDataset(torchvision.datasets.ImageFolder):
         im = transformed["image"]
 
         k = np.random.randint(-2.5,3)
-        im = np.rot90(im, k)
-        rot_matrix = R.from_euler('xyz',[0,0,-90*k], degrees=True).as_matrix()
-        sample = self.torch_transforms(im)
         
         proj_cls = 0
         json_path = None
@@ -308,6 +310,13 @@ class CustomDataset(torchvision.datasets.ImageFolder):
         elif basename in self.face_cls:
             assert not basename in self.smile_cls
             proj_cls = 10
+        # if proj_cls in [1, 3, 0]:
+        #     k = 0
+        im = np.rot90(im, k)
+        rot_matrix = R.from_euler('xyz',[0,0,-90*k], degrees=True).as_matrix()
+        sample = self.torch_transforms(im)
+        
+
             
         if basename in self.inner_cls:
             json_path = self.inner_path

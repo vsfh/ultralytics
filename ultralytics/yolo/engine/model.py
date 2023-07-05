@@ -117,6 +117,7 @@ class YOLO:
         self.cfg = check_yaml(cfg)  # check YAML
         cfg_dict = yaml_load(self.cfg, append_filename=True)  # model dict
         self.task = guess_model_task(cfg_dict)
+        print(self.task)
         self.model = TASK_MAP[self.task][0](cfg_dict, verbose=verbose and RANK == -1)  # build model
         self.overrides['model'] = self.cfg
 
