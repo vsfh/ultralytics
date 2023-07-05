@@ -120,6 +120,56 @@ def read_json():
     with open('/mnt/e/data/classification/image_folder/train/05/58497756069232932_998.json', 'r') as f:
         a = json.load(f)
     print(a)
+    
+from natsort import natsorted
+def chose_folder():
+    path = '/mnt/e/data/classification/label_inner'
+    path_list = natsorted(os.listdir(path))
+    name = ''
+    count=0
+    with open('a.txt', 'w') as f:
+        for idx, file in enumerate(path_list):
+            folder_name = file.split('_')[0]
+            if name != folder_name:
+                count = 1
+                name = folder_name
+            else:
+                count+=1
+            if count==5:
+                f.writelines(folder_name+'\n')
+    f.close()
+            
+def copy_folder():
+    with open('a.txt', 'r') as f:
+        file_list = f.readlines()
+    filename_list = [a.strip() for a in file_list]
+    path = '/mnt/e/data/classification/2023-05-06-fussen-cls-data'
+    folder_path_list = [osp.join(path, foldername) for foldername in filename_list]
+    print(len(folder_path_list))
+    i = 0
+    for folder_path in folder_path_list:
+        if i == 250:
+            break
+        if osp.exists(folder_path):
+            i += 1
+
+            os.makedirs(osp.join('/mnt/e/data/classification/five_inner',osp.basename(folder_path)), exist_ok=True)
+            for file in os.listdir(folder_path):
+                if '上颌合面像_正畸检查' in file:
+                    shutil.copy(osp.join(folder_path, file), osp.join('/mnt/e/data/classification/five_inner',osp.basename(folder_path),'upper.jpg'))
+                if '下颌合面像_正畸检查' in file:
+                    shutil.copy(osp.join(folder_path, file), osp.join('/mnt/e/data/classification/five_inner',osp.basename(folder_path),'lower.jpg'))
+                if '左侧咬合像_正畸检查' in file:
+                    shutil.copy(osp.join(folder_path, file), osp.join('/mnt/e/data/classification/five_inner',osp.basename(folder_path),'left.jpg'))
+                if '右侧咬合像_正畸检查' in file:
+                    shutil.copy(osp.join(folder_path, file), osp.join('/mnt/e/data/classification/five_inner',osp.basename(folder_path),'right.jpg'))
+                if '正面咬合像_正畸检查' in file:
+                    shutil.copy(osp.join(folder_path, file), osp.join('/mnt/e/data/classification/five_inner',osp.basename(folder_path),'front.jpg'))
+                if '全景片' in file:
+                    shutil.copy(osp.join(folder_path, file), osp.join('/mnt/e/data/classification/five_inner',osp.basename(folder_path),'pano.jpg'))
+
+            # break
+    
 if __name__=='__main__':
-    export()
+    copy_folder()
                 
