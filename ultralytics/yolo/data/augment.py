@@ -81,7 +81,7 @@ class BaseMixTransform:
             indexes = [indexes]
 
         # get images information will be used for Mosaic or MixUp
-        mix_labels = [self.dataset.get_label_info(i) for i in indexes]
+        mix_labels = [self.dataset.get_image_and_label(i) for i in indexes]
 
         if self.pre_transform is not None:
             for i, data in enumerate(mix_labels):
@@ -628,6 +628,7 @@ class Format:
         self.mask_ratio = mask_ratio
         self.mask_overlap = mask_overlap
         self.batch_idx = batch_idx  # keep the batch indexes
+        self.pose_dim = 3
 
     def __call__(self, labels):
         img = labels.pop('img')
@@ -651,6 +652,8 @@ class Format:
         labels['img'] = self._format_img(img)
         labels['cls'] = torch.from_numpy(cls) if nl else torch.zeros(nl)
         labels['bboxes'] = torch.from_numpy(instances.bboxes) if nl else torch.zeros((nl, 4))
+        labels['pose'] = torch.from_numpy(instances.pose) if nl else torch.zeros((nl, self.pose_dim))
+        
         if self.return_keypoint:
             labels['keypoints'] = torch.from_numpy(instances.keypoints) if nl else torch.zeros((nl, 17, 2))
         # then we can use collate_fn
@@ -692,14 +695,17 @@ def v8_transforms(dataset, imgsz, hyp):
             pre_transform=LetterBox(new_shape=(imgsz, imgsz),),
             p=hyp.get('augment_ratio', .5)
         ),])
+    # return Compose([
+    #     pre_transform,
+    #     MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
+    #     Albumentations(p=1.0),
+    #     RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
+    #     RandomFlip(direction='vertical', p=hyp.flipud, lr_map=hyp.get('lr_map', None)),
+    #     RandomFlip(direction='horizontal', p=hyp.fliplr, lr_map=hyp.get('lr_map', None)),])  # transforms
     return Compose([
         pre_transform,
-        MixUp(dataset, pre_transform=pre_transform, p=hyp.mixup),
         Albumentations(p=1.0),
-        RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v),
-        RandomFlip(direction='vertical', p=hyp.flipud, lr_map=hyp.get('lr_map', None)),
-        RandomFlip(direction='horizontal', p=hyp.fliplr, lr_map=hyp.get('lr_map', None)),])  # transforms
-
+        RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v)])  # transforms
 
 # Classification augmentations -----------------------------------------------------------------------------------------
 def classify_transforms(size=224):

@@ -183,7 +183,7 @@ class Bboxes:
 
 class Instances:
 
-    def __init__(self, bboxes, segments=None, keypoints=None, bbox_format='xywh', normalized=True) -> None:
+    def __init__(self, bboxes, pose, segments=None, keypoints=None, bbox_format='xywh', normalized=True) -> None:
         """
         Args:
             bboxes (ndarray): bboxes with shape [N, 4].
@@ -194,6 +194,7 @@ class Instances:
             segments = []
         self._bboxes = Bboxes(bboxes=bboxes, format=bbox_format)
         self.keypoints = keypoints
+        self.pose = pose
         self.normalized = normalized
 
         if len(segments) > 0:
@@ -229,11 +230,11 @@ class Instances:
         if not self.normalized:
             return
         self._bboxes.mul(scale=(w, h, w, h))
-        self.segments[..., 0] *= w
-        self.segments[..., 1] *= h
-        if self.keypoints is not None:
-            self.keypoints[..., 0] *= w
-            self.keypoints[..., 1] *= h
+        # self.segments[..., 0] *= w
+        # self.segments[..., 1] *= h
+        # if self.keypoints is not None:
+        #     self.keypoints[..., 0] *= w
+        #     self.keypoints[..., 1] *= h
         self.normalized = False
 
     def normalize(self, w, h):
@@ -277,9 +278,11 @@ class Instances:
         segments = self.segments[index] if len(self.segments) else self.segments
         keypoints = self.keypoints[index] if self.keypoints is not None else None
         bboxes = self.bboxes[index]
+        pose = self.pose[index]
         bbox_format = self._bboxes.format
         return Instances(
             bboxes=bboxes,
+            pose=pose,
             segments=segments,
             keypoints=keypoints,
             bbox_format=bbox_format,

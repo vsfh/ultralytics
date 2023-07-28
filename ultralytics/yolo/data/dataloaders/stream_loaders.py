@@ -26,6 +26,7 @@ class SourceTypes:
     webcam: bool = False
     screenshot: bool = False
     from_img: bool = False
+    tensor: bool = False
 
 
 class LoadStreams:
@@ -274,8 +275,8 @@ class LoadImages:
             im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
             im = np.ascontiguousarray(im)  # contiguous
 
-        return path, im, im0, self.cap, s
-
+        # return path, im, im0, self.cap, s
+        return [path], [im0], self.cap, s
     def _new_video(self, path):
         # Create a new video capture object
         self.frame = 0
@@ -302,21 +303,20 @@ class LoadImages:
 
 class LoadPilAndNumpy:
 
-    def __init__(self, im0, imgsz=640, stride=32, auto=True, transforms=None):
+    def __init__(self, im0, imgsz=640):
+        """Initialize PIL and Numpy Dataloader."""
         if not isinstance(im0, list):
             im0 = [im0]
+        self.paths = [getattr(im, 'filename', f'image{i}.jpg') for i, im in enumerate(im0)]
         self.im0 = [self._single_check(im) for im in im0]
         self.imgsz = imgsz
-        self.stride = stride
-        self.auto = auto
-        self.transforms = transforms
         self.mode = 'image'
-        # generate fake paths
-        self.paths = [getattr(im, 'filename', f'image{i}.jpg') for i, im in enumerate(self.im0)]
+        # Generate fake paths
         self.bs = len(self.im0)
 
     @staticmethod
     def _single_check(im):
+        """Validate and format an image to numpy array."""
         assert isinstance(im, (Image.Image, np.ndarray)), f'Expected PIL/np.ndarray image type, but got {type(im)}'
         if isinstance(im, Image.Image):
             if im.mode != 'RGB':
@@ -325,28 +325,19 @@ class LoadPilAndNumpy:
             im = np.ascontiguousarray(im)  # contiguous
         return im
 
-    def _single_preprocess(self, im, auto):
-        if self.transforms:
-            im = self.transforms(im)  # transforms
-        else:
-            im = LetterBox(self.imgsz, auto=auto, stride=self.stride)(image=im)
-            im = im.transpose((2, 0, 1))[::-1]  # HWC to CHW, BGR to RGB
-            im = np.ascontiguousarray(im)  # contiguous
-        return im
-
     def __len__(self):
+        """Returns the length of the 'im0' attribute."""
         return len(self.im0)
 
     def __next__(self):
+        """Returns batch paths, images, processed images, None, ''."""
         if self.count == 1:  # loop only once as it's batch inference
             raise StopIteration
-        auto = all(x.shape == self.im0[0].shape for x in self.im0) and self.auto
-        im = [self._single_preprocess(im, auto) for im in self.im0]
-        im = np.stack(im, 0) if len(im) > 1 else im[0][None]
         self.count += 1
-        return self.paths, im, self.im0, None, ''
+        return self.paths, self.im0, None, ''
 
     def __iter__(self):
+        """Enables iteration for class LoadPilAndNumpy."""
         self.count = 0
         return self
 
