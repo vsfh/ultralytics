@@ -4,22 +4,50 @@ import torch
 
 from ultralytics.yolo.engine.predictor import BasePredictor
 from ultralytics.yolo.engine.results import Results
+from ultralytics.yolo.data.augment import classify_transforms, LetterBox
+
 from ultralytics.yolo.utils import DEFAULT_CFG, ROOT, ops
 from ultralytics.yolo.utils.plotting import Annotator, colors, save_one_box
-
+import numpy as np
 
 class DetectionPredictor(BasePredictor):
 
     def get_annotator(self, img):
         return Annotator(img, line_width=self.args.line_thickness, example=str(self.model.names))
 
-    def preprocess(self, img):
-        img = torch.from_numpy(img).to(self.model.device)
+    def preprocess(self, im):
+        """Prepares input image before inference.
+
+        Args:
+            im (torch.Tensor | List(np.ndarray)): BCHW for tensor, [(HWC) x B] for list.
+        """
+        not_tensor = not isinstance(im, torch.Tensor)
+        if not_tensor:
+            im = np.stack(self.pre_transform(im))
+            im = im[..., ::-1].transpose((0, 3, 1, 2))  # BGR to RGB, BHWC to BCHW, (n, 3, h, w)
+            im = np.ascontiguousarray(im)  # contiguous
+            im = torch.from_numpy(im)
+
+        img = im.to(self.device)
         img = img.half() if self.model.fp16 else img.float()  # uint8 to fp16/32
-        img /= 255  # 0 - 255 to 0.0 - 1.0
+        if not_tensor:
+            img /= 255  # 0 - 255 to 0.0 - 1.0
         return img
 
-    def postprocess(self, preds, img, orig_img):
+    def pre_transform(self, im):
+        """Pre-transform input image before inference.
+
+        Args:
+            im (List(np.ndarray)): (N, 3, h, w) for tensor, [(h, w, 3) x N] for list.
+
+        Return: A list of transformed imgs.
+        """
+        same_shapes = all(x.shape == im[0].shape for x in im)
+        auto = same_shapes and self.model.pt
+        return [LetterBox(self.imgsz, auto=False, stride=self.model.stride)(image=x) for x in im]
+    
+    def postprocess(self, preds, img, orig_imgs):
+        """Postprocesses predictions and returns a list of Results objects."""
         preds = ops.non_max_suppression(preds,
                                         self.args.conf,
                                         self.args.iou,
@@ -29,10 +57,10 @@ class DetectionPredictor(BasePredictor):
 
         results = []
         for i, pred in enumerate(preds):
-            orig_img = orig_img[i] if isinstance(orig_img, list) else orig_img
-            shape = orig_img.shape
-            pred[:, :4] = ops.scale_boxes(img.shape[2:], pred[:, :4], shape).round()
-            path, _, _, _, _ = self.batch
+            orig_img = orig_imgs[i] if isinstance(orig_imgs, list) else orig_imgs
+            if not isinstance(orig_imgs, torch.Tensor):
+                pred[:, :4] = ops.scale_boxes(img.shape[2:], pred[:, :4], orig_img.shape)
+            path = self.batch[0]
             img_path = path[i] if isinstance(path, list) else path
             results.append(Results(orig_img=orig_img, path=img_path, names=self.model.names, boxes=pred))
         return results

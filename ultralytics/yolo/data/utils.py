@@ -19,7 +19,7 @@ from tqdm import tqdm
 from ultralytics.yolo.utils import DATASETS_DIR, LOGGER, NUM_THREADS, ROOT, colorstr, emojis, yaml_load
 from ultralytics.yolo.utils.checks import check_file, check_font, is_ascii
 from ultralytics.yolo.utils.downloads import download, safe_download, unzip_file
-from ultralytics.yolo.utils.ops import segments2boxes
+from ultralytics.yolo.utils.ops import segments2boxes, xyxy2xywh
 
 HELP_URL = 'See https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data'
 IMG_FORMATS = 'bmp', 'dng', 'jpeg', 'jpg', 'mpo', 'png', 'tif', 'tiff', 'webp', 'pfm'  # include image suffixes
@@ -37,6 +37,13 @@ for orientation in ExifTags.TAGS.keys():
 
 
 def img2label_paths(img_paths):
+    face_clses = []
+    inner_clses = []
+    label_list = []
+    json_dir = '/data/shenfeihong/classification/network_res/'
+    for x in img_paths:
+        label_list.append(os.path.join(json_dir, x.split('/')[-2], os.path.basename(x).replace('jpg', 'json')))
+    return label_list
     # Define label paths as a function of image paths
     sa, sb = f'{os.sep}images{os.sep}', f'{os.sep}labels{os.sep}'  # /images/, /labels/ substrings
     return [sb.join(x.rsplit(sa, 1)).rsplit('.', 1)[0] + '.txt' for x in img_paths]
@@ -59,14 +66,27 @@ def exif_size(img):
             s = (s[1], s[0])
     return s
 
-
+smile_cls = ['05','07','10','13','15']
+face_cls = ['05','06','07','08','10','11','13','14','15','16']
+project = {
+    '18':['其他',0],
+    '00':['侧位片',1],
+    '01':['覆盖像',2],
+    '02':['全景片',3],
+    '03':['上颌合面像',4],
+    '04':['下颌合面像',5],
+    '09':['右侧咬合像',6],
+    '12':['正面咬合像',7],
+    '17':['左侧咬合像',8]
+}
 def verify_image_label(args):
-    # Verify one image-label pair
-    im_file, lb_file, prefix, keypoint, num_cls = args
-    # number (missing, found, empty, corrupt), message, segments, keypoints
+    pose_dim = 3
+    """Verify one image-label pair."""
+    im_file, lb_file, prefix, keypoint, num_cls, nkpt, ndim = args
+    # Number (missing, found, empty, corrupt), message, segments, keypoints
     nm, nf, ne, nc, msg, segments, keypoints = 0, 0, 0, 0, '', [], None
     try:
-        # verify images
+        # Verify images
         im = Image.open(im_file)
         im.verify()  # PIL verify
         shape = exif_size(im)  # image size
@@ -80,38 +100,53 @@ def verify_image_label(args):
                     ImageOps.exif_transpose(Image.open(im_file)).save(im_file, 'JPEG', subsampling=0, quality=100)
                     msg = f'{prefix}WARNING ⚠️ {im_file}: corrupt JPEG restored and saved'
 
-        # verify labels
+        # Verify labels
         if os.path.isfile(lb_file):
             nf = 1  # label found
             with open(lb_file) as f:
-                lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
-                if any(len(x) > 6 for x in lb) and (not keypoint):  # is segment
-                    classes = np.array([x[0] for x in lb], dtype=np.float32)
-                    segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
-                    lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
+                if lb_file.split('/')[-2] == '18':
+                    bbox = [0, 0, shape[0], shape[1]]
+                    pose = [0, 0, 0]
+                else:
+                    context = json.load(f)
+                    bbox = [number for number in context['xyxy']]
+                    bbox[0], bbox[1] = max(0, bbox[0])/shape[1], max(0, bbox[1])/shape[0]
+                    bbox[2], bbox[3] = min(shape[1], bbox[2])/shape[1], min(shape[0], bbox[3])/shape[0]
+                    pose = context['euler']
+                folder_name = lb_file.split('/')[-2]    
+                if folder_name in smile_cls:
+                    cls = 9
+                elif folder_name in face_cls:
+                    cls = 10
+                else:
+                    cls = project[folder_name][1]
+                bbox = xyxy2xywh(np.array(bbox)).reshape(1, 4)
+                classes = np.array([cls], dtype=np.float32).reshape(1, 1)
+                euler = np.array(pose, dtype=np.float32).reshape(1, pose_dim)
+                lb = np.concatenate((classes, bbox, euler), 1)
+                
+                # lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
+                # if any(len(x) > 6 for x in lb) and (not keypoint):  # is segment
+                #     classes = np.array([x[0] for x in lb], dtype=np.float32)
+                #     segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
+                #     lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
                 lb = np.array(lb, dtype=np.float32)
             nl = len(lb)
             if nl:
                 if keypoint:
-                    assert lb.shape[1] == 56, 'labels require 56 columns each'
-                    assert (lb[:, 5::3] <= 1).all(), 'non-normalized or out of bounds coordinate labels'
-                    assert (lb[:, 6::3] <= 1).all(), 'non-normalized or out of bounds coordinate labels'
-                    kpts = np.zeros((lb.shape[0], 39))
-                    for i in range(len(lb)):
-                        kpt = np.delete(lb[i, 5:], np.arange(2, lb.shape[1] - 5, 3))  # remove occlusion param from GT
-                        kpts[i] = np.hstack((lb[i, :5], kpt))
-                    lb = kpts
-                    assert lb.shape[1] == 39, 'labels require 39 columns each after removing occlusion parameter'
-                else:
-                    assert lb.shape[1] == 5, f'labels require 5 columns, {lb.shape[1]} columns detected'
-                    assert (lb[:, 1:] <= 1).all(), \
-                        f'non-normalized or out of bounds coordinates {lb[:, 1:][lb[:, 1:] > 1]}'
+                    assert lb.shape[1] == (5 + nkpt * ndim), f'labels require {(5 + nkpt * ndim)} columns each'
+                    assert (lb[:, 5::ndim] <= 1).all(), 'non-normalized or out of bounds coordinate labels'
+                    assert (lb[:, 6::ndim] <= 1).all(), 'non-normalized or out of bounds coordinate labels'
+                # else:
+                #     assert lb.shape[1] == 5, f'labels require 5 columns, {lb.shape[1]} columns detected'
+                #     assert (lb[:, 1:] <= 1).all(), \
+                #         f'non-normalized or out of bounds coordinates {lb[:, 1:][lb[:, 1:] > 1]}'
+                #     assert (lb >= 0).all(), f'negative label values {lb[lb < 0]}'
                 # All labels
                 max_cls = int(lb[:, 0].max())  # max label count
                 assert max_cls <= num_cls, \
                     f'Label class {max_cls} exceeds dataset class count {num_cls}. ' \
                     f'Possible class labels are 0-{num_cls - 1}'
-                assert (lb >= 0).all(), f'negative label values {lb[lb < 0]}'
                 _, i = np.unique(lb, axis=0, return_index=True)
                 if len(i) < nl:  # duplicate row check
                     lb = lb[i]  # remove duplicates
@@ -120,13 +155,13 @@ def verify_image_label(args):
                     msg = f'{prefix}WARNING ⚠️ {im_file}: {nl - len(i)} duplicate labels removed'
             else:
                 ne = 1  # label empty
-                lb = np.zeros((0, 39), dtype=np.float32) if keypoint else np.zeros((0, 5), dtype=np.float32)
+                lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros(
+                    (0, 5+pose_dim), dtype=np.float32)
         else:
             nm = 1  # label missing
-            lb = np.zeros((0, 39), dtype=np.float32) if keypoint else np.zeros((0, 5), dtype=np.float32)
-        if keypoint:
-            keypoints = lb[:, 5:].reshape(-1, 17, 2)
-        lb = lb[:, :5]
+            lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros((0, 5+pose_dim), dtype=np.float32)
+
+        # lb = lb[:, :5]
         return im_file, lb, shape, segments, keypoints, nm, nf, ne, nc, msg
     except Exception as e:
         nc = 1

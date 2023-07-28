@@ -36,14 +36,15 @@ def make_inner_euler(mode='val'):
         '03':'upper',
         '04':'lower',
         '09':'right',
-        '17':'left'
+        '17':'left',
+        '12':'front'
     }
     id_dict = {
         'upper': [1,2],
         'right': [1,4],
         'left': [2,3],
         'lower': [3,4],
-
+        'front': [1,2,3,4],
     }
     def calculate_angle(vector1, vector2):
         dot_product = np.dot(vector1, vector2)

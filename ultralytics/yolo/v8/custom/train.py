@@ -74,23 +74,30 @@ class CustomTrainer(BaseTrainer):
 
         return  # dont return ckpt. Custom doesn't support resume
 
-    def build_dataset(self, img_path, mode='train'):
-        dataset = CustomDataset(root=img_path, imgsz=self.args.imgsz, augment=mode == 'train')
-        return dataset
+    def build_dataset(self, img_path, mode='train', batch=None):
+        """Build YOLO Dataset
+
+        Args:
+            img_path (str): Path to the folder containing images.
+            mode (str): `train` mode or `val` mode, users are able to customize different augmentations for each mode.
+            batch (int, optional): Size of batches, this is for `rect`. Defaults to None.
+        """
+        gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
+        return build_yolo_dataset(self.args, img_path, batch, self.data, mode=mode, rect=mode == 'val', stride=gs)
 
     def get_dataloader(self, dataset_path, batch_size=16, rank=0, mode='train'):
-        """Returns PyTorch DataLoader with transforms to preprocess images for inference."""
-        with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
-            dataset = self.build_dataset(dataset_path, mode)
+        """TODO: manage splits differently."""
+        # Calculate stride - check if model is initialized
 
-        loader = build_dataloader(dataset, batch_size, self.args.workers, rank=rank)
-        # Attach inference transforms
-        if mode != 'train':
-            if is_parallel(self.model):
-                self.model.module.transforms = loader.dataset.torch_transforms
-            else:
-                self.model.transforms = loader.dataset.torch_transforms
-        return loader
+        assert mode in ['train', 'val']
+        with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
+            dataset = self.build_dataset(dataset_path, mode, batch_size)
+        shuffle = mode == 'train'
+        if getattr(dataset, 'rect', False) and shuffle:
+            print("WARNING ⚠️ 'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")
+            shuffle = False
+        workers = self.args.workers if mode == 'train' else self.args.workers * 2
+        return build_dataloader(dataset, batch_size, workers, shuffle, rank)  # return dataloader
 
     def preprocess_batch(self, batch):
         """Preprocesses a batch of images and classes."""
@@ -231,7 +238,6 @@ class GeodesicLoss(nn.Module):
         
         cos = (  m[:,0,0] + m[:,1,1] + m[:,2,2] - 1 )/2        
         theta = torch.acos(torch.clamp(cos, -1+self.eps, 1-self.eps))
-         
         return torch.mean(theta)
     
 # Criterion class for computing training losses
