@@ -10,7 +10,7 @@ from scipy.spatial.transform import Rotation as R
 import shutil
 
 PATH = '/mnt/e/data/classification'
-LABEL_PATH = PATH+'/label_face'
+LABEL_PATH = PATH+'/label_inner_04'
 cls_dict = {
     "侧位片":'00',
     "覆盖像":'01',
@@ -36,22 +36,23 @@ def make_inner_euler(mode='val'):
         '03':'upper',
         '04':'lower',
         '09':'right',
-        '17':'left'
+        '17':'left',
+        '12':'front'
     }
     id_dict = {
         'upper': [1,2],
         'right': [1,4],
         'left': [2,3],
         'lower': [3,4],
-
+        'front': [1,2,3,4]
     }
     def calculate_angle(vector1, vector2):
         dot_product = np.dot(vector1, vector2)
         magnitudes = np.linalg.norm(vector1) * np.linalg.norm(vector2)
         angle = np.arccos(dot_product / magnitudes)*180/np.pi
         return angle
-    train_folder = opj(PATH, 'image_folder',mode)
-    case_folder = '/mnt/e/data/classification/2023-05-06-fussen-cls-data'
+    train_folder = opj(PATH, 'image_folder_04',mode)
+    case_folder = '/mnt/e/data/classification/2023-05-04-fussen_classification'
 
     for key, group_type in cls_dict.items():
         cls_folder = opj(train_folder, key)
@@ -107,6 +108,8 @@ def make_inner_euler(mode='val'):
                     elif group_type=='left':
                         lr_degree = 90/7*(int(close_teeth_id)%10-0.5)
                     matrix = R.from_euler('xyz', [0,lr_degree,0], degrees=True).as_matrix()
+                if group_type=='front':
+                    matrix = R.from_euler('xyz', [0,-90,0], degrees=True).as_matrix()
 
                 context={
                     'img_path':opj(cls_folder, img_file),
@@ -118,14 +121,15 @@ def make_inner_euler(mode='val'):
                     json.dump(context, f)
             except:
                 print(cls_folder, img_file)
+                # break
 
 
 def make_certain_euler(mode='val', show=True):
     cls_dict = {
         '00':[0, -90, 0],
-        '01':[0,       -90,        0],
-        '02':[0,       0,        0],
-        '12':[0, 0,        0],
+        '01':[0, -90, 0],
+        '02':[0, 0, 0],
+        '12':[0, 0, 0],
     }
 
     train_folder = opj(PATH,'image_folder',mode)
@@ -186,13 +190,14 @@ def draw_pose(img, pose_ori, tdx=None, tdy=None, size = 100):
     return img
 
 def vis_json():
-    file = '58437825598523069_107961.json'
+    file = '57952522842935166_4347.json'
     path = opj(LABEL_PATH ,file)
     with open(path, 'r') as f:
         context = json.load(f)
 
     k = np.random.randint(-3,3)
     img = cv2.imread(context['img_path'])
+    cv2.rectangle(img, tuple(context['roi'][:2]), tuple(context['roi'][-2:]), (255,0,0), 2)
     img = np.rot90(img, k)
     matrix = np.array(context['euler'])[0]
     rot_matrix = R.from_euler('xyz',[0,0,-90*k], degrees=True).as_matrix()
@@ -330,5 +335,5 @@ if __name__=='__main__':
     # make_inner_euler('train')
     # make_inner_euler('val')
     # make_face_euler('train')
-    make_face_euler('val')
-    # vis_json()
+    # make_inner_euler('val')
+    vis_json()
