@@ -11,7 +11,7 @@ from ultralytics.yolo.utils.plotting import Annotator, colors, save_one_box
 import numpy as np
 
 class DetectionPredictor(BasePredictor):
-
+    
     def get_annotator(self, img):
         return Annotator(img, line_width=self.args.line_thickness, example=str(self.model.names))
 
@@ -47,8 +47,9 @@ class DetectionPredictor(BasePredictor):
         return [LetterBox(self.imgsz, auto=False, stride=self.model.stride)(image=x) for x in im]
     
     def postprocess(self, preds, img, orig_imgs):
+        nc = 19
         """Postprocesses predictions and returns a list of Results objects."""
-        preds = ops.non_max_suppression(preds,
+        preds = ops.non_max_suppression(preds[0][:,:nc+4,:],
                                         self.args.conf,
                                         self.args.iou,
                                         agnostic=self.args.agnostic_nms,
