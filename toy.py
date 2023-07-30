@@ -151,8 +151,8 @@ def copy_folder():
     print(len(folder_path_list))
     i = 0
     for folder_path in folder_path_list:
-        if i == 250:
-            break
+        # if i < 250:
+        #     continue
         if osp.exists(folder_path):
             i += 1
 
