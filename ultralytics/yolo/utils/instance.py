@@ -373,9 +373,11 @@ class Instances:
         normalized = instances_list[0].normalized
 
         cat_boxes = np.concatenate([ins.bboxes for ins in instances_list], axis=axis)
+        cat_poses = np.concatenate([ins.pose for ins in instances_list], axis=axis)
+        
         cat_segments = np.concatenate([b.segments for b in instances_list], axis=axis)
         cat_keypoints = np.concatenate([b.keypoints for b in instances_list], axis=axis) if use_keypoint else None
-        return cls(cat_boxes, cat_segments, cat_keypoints, bbox_format, normalized)
+        return cls(cat_boxes, cat_poses, bbox_format=bbox_format, normalized=normalized)
 
     @property
     def bboxes(self):

@@ -224,8 +224,18 @@ def polygons2masks_overlap(imgsz, segments, downsample_ratio=1):
         masks = np.clip(masks, a_min=0, a_max=i + 1)
     return masks, index
 
+def check_det_dataset(dataset: str):
+    data_dir = (DATASETS_DIR / dataset).resolve()
+    print(data_dir)
 
-def check_det_dataset(dataset, autodownload=True):
+    train_set = data_dir / 'train'
+    test_set = data_dir / 'test' if (data_dir / 'test').exists() else data_dir / 'val'  # data/test or data/val
+    nc = len([x for x in (data_dir / 'train').glob('*') if x.is_dir()])  # number of classes
+    names = [x.name for x in (data_dir / 'train').iterdir() if x.is_dir()]  # class names list
+    names = dict(enumerate(sorted(names)))
+    return {'train': train_set, 'val': test_set, 'nc': nc, 'names': names}
+
+def check_det_dataset_ori(dataset, autodownload=True):
     # Download, check and/or unzip dataset if not found locally
     data = check_file(dataset)
 

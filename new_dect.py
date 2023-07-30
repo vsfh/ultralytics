@@ -25,4 +25,4 @@ def load_cache():
     nf, nm, ne, nc, n = cache.pop('results')
     pass
 if __name__=='__main__':
-    test()
+    train()
