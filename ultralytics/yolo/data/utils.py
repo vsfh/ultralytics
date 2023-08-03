@@ -41,6 +41,7 @@ def img2label_paths(img_paths):
     inner_clses = []
     label_list = []
     json_dir = '/data/shenfeihong/classification/network_res/'
+    json_dir = '/mnt/e/data/classification/new_label/network_res'
     for x in img_paths:
         label_list.append(os.path.join(json_dir, x.split('/')[-2], os.path.basename(x).replace('jpg', 'json')))
     return label_list
@@ -93,12 +94,12 @@ def verify_image_label(args):
         shape = (shape[1], shape[0])  # hw
         assert (shape[0] > 9) & (shape[1] > 9), f'image size {shape} <10 pixels'
         assert im.format.lower() in IMG_FORMATS, f'invalid image format {im.format}'
-        if im.format.lower() in ('jpg', 'jpeg'):
-            with open(im_file, 'rb') as f:
-                f.seek(-2, 2)
-                if f.read() != b'\xff\xd9':  # corrupt JPEG
-                    ImageOps.exif_transpose(Image.open(im_file)).save(im_file, 'JPEG', subsampling=0, quality=100)
-                    msg = f'{prefix}WARNING ⚠️ {im_file}: corrupt JPEG restored and saved'
+        # if im.format.lower() in ('jpg', 'jpeg'):
+        #     with open(im_file, 'rb') as f:
+        #         f.seek(-2, 2)
+        #         if f.read() != b'\xff\xd9':  # corrupt JPEG
+        #             ImageOps.exif_transpose(Image.open(im_file)).save(im_file, 'JPEG', subsampling=0, quality=100)
+        #             msg = f'{prefix}WARNING ⚠️ {im_file}: corrupt JPEG restored and saved aaa'
 
         # Verify labels
         if os.path.isfile(lb_file):

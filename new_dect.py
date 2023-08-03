@@ -10,7 +10,9 @@ import shutil
 
 def train():
     model = YOLO('./ultralytics/models/v8/yolov8m.yaml')
-    model.train(data='/data/shenfeihong/classification/image_folder_04/')
+    path = '/data/shenfeihong/classification/image_folder_04/'
+    path = '/mnt/e/data/classification/image_folder_04'
+    model.train(data=path)
     
 def test():
     model = YOLO('runs/detect/train4/weights/last.pt')

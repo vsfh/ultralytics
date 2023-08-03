@@ -84,6 +84,7 @@ class BaseMixTransform:
         mix_labels = [self.dataset.get_image_and_label(i) for i in indexes]
 
         if self.pre_transform is not None:
+            labels = self.pre_transform(labels)
             for i, data in enumerate(mix_labels):
                 mix_labels[i] = self.pre_transform(data)
         labels['mix_labels'] = mix_labels
@@ -107,11 +108,11 @@ class Mosaic(BaseMixTransform):
             image. The shape order should be (height, width).
             Default to (640, 640).
     """
-    def __init__(self, dataset, imgsz=640, p=1.0, n=4):
+    def __init__(self, dataset, imgsz=640, p=1.0, n=4, pre_transform=None):
         """Initializes the object with a dataset, image size, probability, and border."""
         assert 0 <= p <= 1.0, f'The probability should be in range [0, 1], but got {p}.'
         assert n in (4, 9), 'grid must be equal to 4 or 9.'
-        super().__init__(dataset=dataset, p=p)
+        super().__init__(dataset=dataset, p=p, pre_transform=pre_transform)
         self.dataset = dataset
         self.imgsz = imgsz
         self.border = (-imgsz // 2, -imgsz // 2)  # width, height
@@ -146,16 +147,22 @@ class Mosaic(BaseMixTransform):
                 img4 = np.full((s * 2, s * 2, img.shape[2]), 114, dtype=np.uint8)  # base image with 4 tiles
                 x1a, y1a, x2a, y2a = max(xc - w, 0), max(yc - h, 0), xc, yc  # xmin, ymin, xmax, ymax (large image)
                 x1b, y1b, x2b, y2b = w - (x2a - x1a), h - (y2a - y1a), w, h  # xmin, ymin, xmax, ymax (small image)
+                x1a, y1a, x2a, y2a = 0,0,s,s
             elif i == 1:  # top right
                 x1a, y1a, x2a, y2a = xc, max(yc - h, 0), min(xc + w, s * 2), yc
                 x1b, y1b, x2b, y2b = 0, h - (y2a - y1a), min(w, x2a - x1a), h
+                x1a, y1a, x2a, y2a = s,0,s*2,s
             elif i == 2:  # bottom left
                 x1a, y1a, x2a, y2a = max(xc - w, 0), yc, xc, min(s * 2, yc + h)
                 x1b, y1b, x2b, y2b = w - (x2a - x1a), 0, w, min(y2a - y1a, h)
+                x1a, y1a, x2a, y2a = 0,s,s,s*2
+                
             elif i == 3:  # bottom right
                 x1a, y1a, x2a, y2a = xc, yc, min(xc + w, s * 2), min(s * 2, yc + h)
                 x1b, y1b, x2b, y2b = 0, 0, min(w, x2a - x1a), min(y2a - y1a, h)
+                x1a, y1a, x2a, y2a = s,s,s*2,s*2
 
+            x1b, y1b, x2b, y2b = 0,0,s,s
             img4[y1a:y2a, x1a:x2a] = img[y1b:y2b, x1b:x2b]  # img4[ymin:ymax, xmin:xmax]
             padw = x1a - x1b
             padh = y1a - y1b
@@ -241,8 +248,8 @@ class Mosaic(BaseMixTransform):
             'instances': Instances.concatenate(instances, axis=0),
             'mosaic_border': self.border}  # final_labels
         final_labels['instances'].clip(imgsz, imgsz)
-        good = final_labels['instances'].remove_zero_area_boxes()
-        final_labels['cls'] = final_labels['cls'][good]
+        # good = final_labels['instances'].remove_zero_area_boxes()
+        # final_labels['cls'] = final_labels['cls'][good]
         return final_labels
 
 class MixUp(BaseMixTransform):
@@ -299,11 +306,11 @@ class RandomPerspective:
 
         # Rotation and Scale
         R = np.eye(3)
-        a = random.uniform(-self.degrees, self.degrees)
-        # a += random.choice([-180, -90, 0, 90])  # add 90deg rotations to small rotations
+        # a = random.uniform(-self.degrees, self.degrees)
+        a = random.choice([-180, -90, 0, 90])  # add 90deg rotations to small rotations
         s = random.uniform(1 - self.scale, 1 + self.scale)
         # s = 2 ** random.uniform(-scale, scale)
-        R[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=s)
+        R[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=1)
 
         # Shear
         S = np.eye(3)
@@ -316,14 +323,15 @@ class RandomPerspective:
         T[1, 2] = random.uniform(0.5 - self.translate, 0.5 + self.translate) * self.size[1]  # y translation (pixels)
 
         # Combined rotation matrix
-        M = T @ S @ R @ P @ C  # order of operations (right to left) is IMPORTANT
+        # M = T @ S @ R @ P @ C  # order of operations (right to left) is IMPORTANT
+        M = R
         # affine image
         if (border[0] != 0) or (border[1] != 0) or (M != np.eye(3)).any():  # image changed
             if self.perspective:
                 img = cv2.warpPerspective(img, M, dsize=self.size, borderValue=(0, 0, 0))
             else:  # affine
                 img = cv2.warpAffine(img, M[:2], dsize=self.size, borderValue=(0, 0, 0))
-        return img, M, s
+        return img, M, s, a
 
     def apply_bboxes(self, bboxes, M):
         """apply affine to bboxes only.
@@ -347,6 +355,10 @@ class RandomPerspective:
         x = xy[:, [0, 2, 4, 6]]
         y = xy[:, [1, 3, 5, 7]]
         return np.concatenate((x.min(1), y.min(1), x.max(1), y.max(1))).reshape(4, n).T
+
+    def apply_poses(self, pose, angle):
+        pose[:,2] += angle
+        return pose
 
     def apply_segments(self, segments, M):
         """apply affine to segments and generate new bboxes from segments.
@@ -417,6 +429,8 @@ class RandomPerspective:
 
         img = labels['img']
         cls = labels['cls']
+
+        
         instances = labels.pop('instances')
         # make sure the coord formats are right
         instances.convert_bbox(format='xyxy')
@@ -426,9 +440,11 @@ class RandomPerspective:
         self.size = img.shape[1] + border[1] * 2, img.shape[0] + border[0] * 2  # w, h
         # M is affine matrix
         # scale for func:`box_candidates`
-        img, M, scale = self.affine_transform(img, border)
+        img, M, scale, angle = self.affine_transform(img, border)
 
         bboxes = self.apply_bboxes(instances.bboxes, M)
+        pose = self.apply_poses(instances.pose, angle)
+        
 
         segments = instances.segments
         keypoints = instances.keypoints
@@ -438,7 +454,7 @@ class RandomPerspective:
 
         if keypoints is not None:
             keypoints = self.apply_keypoints(keypoints, M)
-        new_instances = Instances(bboxes, segments, keypoints, bbox_format='xyxy', normalized=False)
+        new_instances = Instances(bboxes, pose, segments, keypoints, bbox_format='xyxy', normalized=False)
         # clip
         new_instances.clip(*self.size)
 
@@ -521,6 +537,81 @@ class RandomFlip:
         labels['img'] = np.ascontiguousarray(img)
         labels['instances'] = instances
         labels['cls'] = cls
+        return labels
+
+class LetterBox_Rot:
+    """Resize image and padding for detection, instance segmentation, pose"""
+
+    def __init__(self, new_shape=(640, 640), auto=False, scaleFill=False, scaleup=True, stride=32):
+        self.new_shape = new_shape
+        self.auto = auto
+        self.scaleFill = scaleFill
+        self.scaleup = scaleup
+        self.stride = stride
+
+    def get_rot_mat(self, new_shape):
+        R = np.eye(3)
+        a = random.choice([-180, -90, 0, 90])  # add 90deg rotations to small rotations
+        R[:2] = cv2.getRotationMatrix2D(angle=a, center=(int(new_shape[0]//2), int(new_shape[1]//2)), scale=1)
+        
+        return R, a
+    
+    def __call__(self, labels=None, image=None):
+        if labels is None:
+            labels = {}
+        img = labels.get('img') if image is None else image
+        shape = img.shape[:2]  # current shape [height, width]
+        new_shape = labels.pop('rect_shape', self.new_shape)
+        if isinstance(new_shape, int):
+            new_shape = (new_shape, new_shape)
+
+        # Scale ratio (new / old)
+        r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+        if not self.scaleup:  # only scale down, do not scale up (for better val mAP)
+            r = min(r, 1.0)
+
+        # Compute padding
+        ratio = r, r  # width, height ratios
+        new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
+        dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
+        if self.auto:  # minimum rectangle
+            dw, dh = np.mod(dw, self.stride), np.mod(dh, self.stride)  # wh padding
+        elif self.scaleFill:  # stretch
+            dw, dh = 0.0, 0.0
+            new_unpad = (new_shape[1], new_shape[0])
+            ratio = new_shape[1] / shape[1], new_shape[0] / shape[0]  # width, height ratios
+
+        dw /= 2  # divide padding into 2 sides
+        dh /= 2
+        if labels.get('ratio_pad'):
+            labels['ratio_pad'] = (labels['ratio_pad'], (dw, dh))  # for evaluation
+
+        if shape[::-1] != new_unpad:  # resize
+            img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
+        top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+        left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+        img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT,
+                                 value=(0, 0, 0))  # add border
+
+        R, angle = self.get_rot_mat(new_shape)
+        img = cv2.warpAffine(img, R[:2], dsize=new_shape, borderValue=(0, 0, 0))
+
+
+        if len(labels):
+            labels = self._update_labels(labels, ratio, dw, dh, R, angle)
+            labels['img'] = img
+            labels['resized_shape'] = new_shape
+            return labels
+        else:
+            return img
+
+    def _update_labels(self, labels, ratio, padw, padh, M, angle):
+        """Update labels"""
+        labels['instances'].convert_bbox(format='xyxy')
+        labels['instances'].denormalize(*labels['img'].shape[:2][::-1])
+        labels['instances'].scale(*ratio)
+        labels['instances'].add_padding(padw, padh)
+        labels['instances'].rot_90_bbox(M, angle)
         return labels
 
 
@@ -672,7 +763,7 @@ class Albumentations:
             labels['instances'].update(bboxes=bboxes)
         return labels
 
-
+from scipy.spatial.transform import Rotation as R
 # TODO: technically this is not an augmentation, maybe we should put this to another files
 class Format:
 
@@ -691,7 +782,7 @@ class Format:
         self.mask_ratio = mask_ratio
         self.mask_overlap = mask_overlap
         self.batch_idx = batch_idx  # keep the batch indexes
-        self.pose_dim = 3
+        self.pose_dim = 4
 
     def __call__(self, labels):
         img = labels.pop('img')
@@ -715,7 +806,13 @@ class Format:
         labels['img'] = self._format_img(img)
         labels['cls'] = torch.from_numpy(cls) if nl else torch.zeros(nl)
         labels['bboxes'] = torch.from_numpy(instances.bboxes) if nl else torch.zeros((nl, 4))
-        labels['pose'] = torch.from_numpy(instances.pose) if nl else torch.zeros((nl, self.pose_dim))
+        poses = []
+        for i in range(len(instances.pose)):
+            single_pose = instances.pose[i]
+            poses.append(R.from_euler('xyz', single_pose, degrees=True).as_quat().reshape(1,4))
+        poses = np.concatenate(poses, 0)
+            
+        labels['pose'] = torch.from_numpy(poses) if nl else torch.zeros((nl, self.pose_dim))
         
         if self.return_keypoint:
             labels['keypoints'] = torch.from_numpy(instances.keypoints) if nl else torch.zeros((nl, 17, 2))
@@ -747,7 +844,7 @@ class Format:
 
 def v8_transforms(dataset, imgsz, hyp):
     pre_transform = Compose([
-        Mosaic(dataset, imgsz=imgsz, p=hyp.mosaic),
+        Mosaic(dataset, imgsz=imgsz, p=hyp.mosaic,pre_transform=LetterBox(new_shape=(imgsz, imgsz),),),
         # CopyPaste(p=hyp.copy_paste),
         RandomPerspective(
             degrees=hyp.degrees,
@@ -755,7 +852,7 @@ def v8_transforms(dataset, imgsz, hyp):
             scale=hyp.scale,
             shear=hyp.shear,
             perspective=hyp.perspective,
-            pre_transform=LetterBox(new_shape=(imgsz, imgsz),),
+            pre_transform=LetterBox(new_shape=(imgsz, imgsz),scaleup=False),
             p=hyp.get('augment_ratio', .5)
         ),])
     # return Compose([
@@ -766,9 +863,7 @@ def v8_transforms(dataset, imgsz, hyp):
     #     RandomFlip(direction='vertical', p=hyp.flipud, lr_map=hyp.get('lr_map', None)),
     #     RandomFlip(direction='horizontal', p=hyp.fliplr, lr_map=hyp.get('lr_map', None)),])  # transforms
     return Compose([
-        pre_transform,
-        Albumentations(p=1.0),
-        RandomHSV(hgain=hyp.hsv_h, sgain=hyp.hsv_s, vgain=hyp.hsv_v)])  # transforms
+        pre_transform])  # transforms
 
 # Classification augmentations -----------------------------------------------------------------------------------------
 def classify_transforms(size=224):

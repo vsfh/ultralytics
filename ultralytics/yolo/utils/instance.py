@@ -83,6 +83,31 @@ class Bboxes:
         self.convert('xyxy')
         return (self.bboxes[:, 2] - self.bboxes[:, 0]) * (self.bboxes[:, 3] - self.bboxes[:, 1])
 
+    def rot_90(self, M, angle):
+        n = len(self.bboxes)
+        new_bbox = np.zeros_like(self.bboxes)
+        x1y1 = np.ones((n,3))
+        x2y2 = np.ones((n,3))
+        
+        if angle == -90:
+            x1y1[:,:2] = self.bboxes[:,[0,3]]
+            x2y2[:,:2] = self.bboxes[:,[2,1]]
+
+        elif angle == -180:
+            x1y1[:,:2] = self.bboxes[:,[2,3]]
+            x2y2[:,:2] = self.bboxes[:,[0,1]]
+        
+        elif angle == 90:
+            x1y1[:,:2] = self.bboxes[:,[2,1]]
+            x2y2[:,:2] = self.bboxes[:,[0,3]]    
+        else:
+            return
+        
+        new_bbox[:,:2] = (x1y1 @ M.T)[:,:2]
+        new_bbox[:,-2:] = (x2y2 @ M.T)[:,:2]
+        
+        self.bboxes = new_bbox
+        
     # def denormalize(self, w, h):
     #    if not self.normalized:
     #         return
@@ -130,7 +155,7 @@ class Bboxes:
     def __len__(self):
         """Return the number of boxes."""
         return len(self.bboxes)
-
+    
     @classmethod
     def concatenate(cls, boxes_list: List['Bboxes'], axis=0) -> 'Bboxes':
         """
@@ -209,11 +234,15 @@ class Instances:
     def convert_bbox(self, format):
         """Convert bounding box format."""
         self._bboxes.convert(format=format)
-
+    
     def bbox_areas(self):
         """Calculate the area of bounding boxes."""
         self._bboxes.areas()
 
+    def rot_90_bbox(self, M, angle):
+        self.pose[:, 2] += -angle
+        self._bboxes.rot_90(M, angle)
+        
     def scale(self, scale_w, scale_h, bbox_only=False):
         """this might be similar with denormalize func but without normalized sign."""
         self._bboxes.mul(scale=(scale_w, scale_h, scale_w, scale_h))

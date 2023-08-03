@@ -97,6 +97,7 @@ class DetectionTrainer(BaseTrainer):
                     batch_idx=batch['batch_idx'],
                     cls=batch['cls'].squeeze(-1),
                     bboxes=batch['bboxes'],
+                    pos=batch['pose'],
                     paths=batch['im_file'],
                     fname=self.save_dir / f'train_batch{ni}.jpg')
 
@@ -125,7 +126,7 @@ class Loss:
         self.no = m.no
         self.reg_max = m.reg_max
         self.device = device
-        self.pose_dim = 3
+        self.pose_dim = 4
         self.use_dfl = m.reg_max > 1
         roll_out_thr = h.min_memory if h.min_memory > 1 else 64 if h.min_memory else 0  # 64 is default
 

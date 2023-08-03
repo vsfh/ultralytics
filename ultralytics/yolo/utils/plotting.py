@@ -3,6 +3,7 @@
 import contextlib
 import math
 from pathlib import Path
+from scipy.spatial.transform import Rotation as R
 
 import cv2
 import matplotlib.pyplot as plt
@@ -225,6 +226,43 @@ class Annotator:
         """Return annotated image as array."""
         return np.asarray(self.im)
 
+    def poses(self, pose, box, size = 100):
+        pose = R.from_quat(pose).as_matrix()
+        
+        if isinstance(pose, torch.Tensor):
+            pose = pose.tolist()
+        tdx = int((box[0]+box[2])/2)
+        tdy = int((box[1]+box[3])/2)
+        
+        if len(pose.shape) == 3:
+            pose = pose[0].copy()
+        else:
+            pose = pose.copy()
+        pose[:,1] *= -1
+
+        # X-Axis pointing to the right. Drawn in red
+        x_axis = pose[:, 0]
+        x1 = size * x_axis[0] + tdx
+        y1 = size * x_axis[1] + tdy
+
+        # Y-Axis | Drawn in green
+        #        v
+        y_axis = pose[:, 1]
+        x2 = size * y_axis[0] + tdx
+        y2 = size * y_axis[1] + tdy
+
+        # Z-Axis (out of the screen). Drawn in blue
+        z_axis = pose[:, 2]
+        x3 = size * z_axis[0] + tdx
+        y3 = size * z_axis[1] + tdy
+        self.draw.line([(int(tdx), int(tdy)), (int(x1),int(y1))], fill='red')
+        self.draw.line([(int(tdx), int(tdy)), (int(x2),int(y2))], fill='blue')
+        self.draw.line([(int(tdx), int(tdy)), (int(x3),int(y3))], fill='green')
+        
+        
+        # cv2.line(self.im, (int(tdx), int(tdy)), (int(x1),int(y1)),(0,0,255),4)
+        # cv2.line(self.im, (int(tdx), int(tdy)), (int(x2),int(y2)),(0,255,0),4)
+        # cv2.line(self.im, (int(tdx), int(tdy)), (int(x3),int(y3)),(255,0,0),4)
 
 @TryExcept()  # known issue https://github.com/ultralytics/yolov5/issues/5395
 @plt_settings()
@@ -297,6 +335,7 @@ def plot_images(images,
                 batch_idx,
                 cls,
                 bboxes=np.zeros(0, dtype=np.float32),
+                pos=np.zeros(0, dtype=np.float32),
                 masks=np.zeros(0, dtype=np.uint8),
                 kpts=np.zeros((0, 51), dtype=np.float32),
                 paths=None,
@@ -309,6 +348,8 @@ def plot_images(images,
         cls = cls.cpu().numpy()
     if isinstance(bboxes, torch.Tensor):
         bboxes = bboxes.cpu().numpy()
+    if isinstance(pos, torch.Tensor):
+        pos = pos.cpu().numpy()
     if isinstance(masks, torch.Tensor):
         masks = masks.cpu().numpy().astype(int)
     if isinstance(kpts, torch.Tensor):
@@ -351,6 +392,7 @@ def plot_images(images,
         if len(cls) > 0:
             idx = batch_idx == i
             classes = cls[idx].astype('int')
+            poses = pos[idx]
 
             if len(bboxes):
                 boxes = xywh2xyxy(bboxes[idx, :4]).T
@@ -368,16 +410,19 @@ def plot_images(images,
                 for j, box in enumerate(boxes.T.tolist()):
                     c = classes[j]
                     color = colors(c)
+                    pose = poses[j]
                     c = names.get(c, c) if names else c
                     if labels or conf[j] > 0.25:  # 0.25 conf thresh
                         label = f'{c}' if labels else f'{c} {conf[j]:.1f}'
                         annotator.box_label(box, label, color=color)
+                        annotator.poses(pose, box)
+                        
             elif len(classes):
                 for c in classes:
                     color = colors(c)
                     c = names.get(c, c) if names else c
                     annotator.text((x, y), f'{c}', txt_color=color, box_style=True)
-
+                        
             # Plot keypoints
             if len(kpts):
                 kpts_ = kpts[idx].copy()
