@@ -3,8 +3,8 @@ from os.path import join as opj
 import numpy as np
 import json
 import cv2
-from chohocv.models import YoloModel, KeypointsModel
-from sixdrepnet import SixDRepNet
+# from chohocv.models import YoloModel, KeypointsModel
+# from sixdrepnet import SixDRepNet
 from math import cos, sin
 from scipy.spatial.transform import Rotation as R
 import shutil
@@ -185,8 +185,8 @@ def draw_pose(img, pose_ori, tdx=None, tdy=None, size = 100):
     y3 = size * z_axis[1] + tdy
 
     cv2.line(img, (int(tdx), int(tdy)), (int(x1),int(y1)),(0,0,255),4)
-    cv2.line(img, (int(tdx), int(tdy)), (int(x2),int(y2)),(0,255,0),4)
-    cv2.line(img, (int(tdx), int(tdy)), (int(x3),int(y3)),(255,0,0),4)
+    cv2.line(img, (int(tdx), int(tdy)), (int(x2),int(y2)),(255,0,0),4)
+    cv2.line(img, (int(tdx), int(tdy)), (int(x3),int(y3)),(0,255,0),4)
     return img
 
 def vis_json():

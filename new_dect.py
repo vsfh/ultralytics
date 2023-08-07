@@ -16,11 +16,15 @@ def train():
     model.train(data=path, device='0,1,2,3')
     
 def test():
-    model = YOLO('runs/detect/train4/weights/last.pt')
-    model.predict('58382554055126628_59054.jpg')
+    path = 'runs/detect/train4/weights/last.pt'
+    path = '/mnt/e/share/last.pt'
+    model = YOLO(path)
+    model.predict('/mnt/e/data/classification/else/error/1.jpg')
     
 def export():
-    model = YOLO('runs/detect/train4/weights/last.pt')
+    path = 'runs/detect/train4/weights/last.pt'
+    path = '/mnt/e/share/last.pt'
+    model = YOLO(path)
     model.export(format='onnx')
 
 def load_cache():
@@ -36,4 +40,4 @@ def check():
     from ultralytics.yolo.utils.checks import check_font
     check_font('Arial.ttf')
 if __name__=='__main__':
-    export()
+    test()
