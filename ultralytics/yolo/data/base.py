@@ -144,6 +144,8 @@ class BaseDataset(Dataset):
     def load_image(self, i):
         """Loads 1 image from dataset index 'i', returns (im, resized hw)."""
         im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i]
+        path = '/ssd/gregory/classification/image_folder_04/'
+        f = os.path.join(path, f.split('/')[-3], f.split('/')[-2], f.split('/')[-1])
         if im is None:  # not cached in RAM
             if fn.exists():  # load npy
                 im = np.load(fn)

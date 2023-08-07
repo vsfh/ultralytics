@@ -169,11 +169,13 @@ def check_font(font='Arial.ttf'):
     # Check USER_CONFIG_DIR
     file = USER_CONFIG_DIR / name
     if file.exists():
+        print('exist')
         return file
 
     # Check system fonts
     matches = [s for s in font_manager.findSystemFonts() if font in s]
     if any(matches):
+        print('match')
         return matches[0]
 
     # Download to USER_CONFIG_DIR if missing

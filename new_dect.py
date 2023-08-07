@@ -12,7 +12,8 @@ def train():
     model = YOLO('./ultralytics/models/v8/yolov8m.yaml')
     path = '/data/shenfeihong/classification/image_folder_04/'
     path = '/mnt/e/data/classification/image_folder_04'
-    model.train(data=path)
+    path = '/ssd/gregory/classification/image_folder_04/'
+    model.train(data=path, device='0,1,2,3')
     
 def test():
     model = YOLO('runs/detect/train4/weights/last.pt')
@@ -26,5 +27,9 @@ def load_cache():
     gc.enable()
     nf, nm, ne, nc, n = cache.pop('results')
     pass
+
+def check():
+    from ultralytics.yolo.utils.checks import check_font
+    check_font('Arial.ttf')
 if __name__=='__main__':
     train()
