@@ -11,9 +11,9 @@ import shutil
 def train():
     model = YOLO('./ultralytics/models/v8/yolov8m.yaml')
     path = '/data/shenfeihong/classification/image_folder_04/'
-    path = '/mnt/e/data/classification/image_folder_04'
-    path = '/ssd/gregory/classification/image_folder_04/'
-    model.train(data=path, device='0,1,2,3')
+    # path = '/mnt/e/data/classification/image_folder_04'
+    # path = '/ssd/gregory/classification/image_folder_04/'
+    model.train(data=path, device='4,5,6,7')
     
 def test():
     path = 'runs/detect/train4/weights/last.pt'
@@ -22,8 +22,8 @@ def test():
     model.predict('/mnt/e/data/classification/else/error/1.jpg')
     
 def export():
-    path = 'runs/detect/train4/weights/last.pt'
-    path = '/mnt/e/share/last.pt'
+    path = '/home/gregory/code/ultralytics/runs/detect/train6/weights/last.pt'
+    # path = '/mnt/e/share/last.pt'
     model = YOLO(path)
     model.export(format='onnx')
 
@@ -40,4 +40,4 @@ def check():
     from ultralytics.yolo.utils.checks import check_font
     check_font('Arial.ttf')
 if __name__=='__main__':
-    test()
+    export()

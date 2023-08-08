@@ -41,7 +41,7 @@ def img2label_paths(img_paths):
     inner_clses = []
     label_list = []
     json_dir = '/data/shenfeihong/classification/network_res/'
-    json_dir = '/mnt/e/data/classification/new_label/network_res'
+    # json_dir = '/mnt/e/data/classification/new_label/network_res'
     for x in img_paths:
         label_list.append(os.path.join(json_dir, x.split('/')[-2], os.path.basename(x).replace('jpg', 'json')))
     return label_list
@@ -100,7 +100,10 @@ def verify_image_label(args):
         #         if f.read() != b'\xff\xd9':  # corrupt JPEG
         #             ImageOps.exif_transpose(Image.open(im_file)).save(im_file, 'JPEG', subsampling=0, quality=100)
         #             msg = f'{prefix}WARNING ⚠️ {im_file}: corrupt JPEG restored and saved aaa'
-
+        if lb_file.split('/')[-2] == '18':
+            with open(lb_file, 'w') as f:
+                f.writelines('new')
+            f.close()
         # Verify labels
         if os.path.isfile(lb_file):
             nf = 1  # label found
@@ -231,7 +234,8 @@ def check_det_dataset(dataset: str):
 
     train_set = data_dir / 'train'
     test_set = data_dir / 'test' if (data_dir / 'test').exists() else data_dir / 'val'  # data/test or data/val
-    nc = len([x for x in (data_dir / 'train').glob('*') if x.is_dir()])  # number of classes
+    # nc = len([x for x in (data_dir / 'train').glob('*') if x.is_dir()])  # number of classes
+    nc = 11
     names = [x.name for x in (data_dir / 'train').iterdir() if x.is_dir()]  # class names list
     names = dict(enumerate(sorted(names)))
     return {'train': train_set, 'val': test_set, 'nc': nc, 'names': names}
