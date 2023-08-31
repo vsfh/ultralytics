@@ -78,7 +78,8 @@ project = {
     '04':['下颌合面像',5],
     '09':['右侧咬合像',6],
     '12':['正面咬合像',7],
-    '17':['左侧咬合像',8]
+    '17':['左侧咬合像',8],
+    '19':['小牙片',11],
 }
 def verify_image_label(args):
     pose_dim = 3
@@ -100,7 +101,7 @@ def verify_image_label(args):
         #         if f.read() != b'\xff\xd9':  # corrupt JPEG
         #             ImageOps.exif_transpose(Image.open(im_file)).save(im_file, 'JPEG', subsampling=0, quality=100)
         #             msg = f'{prefix}WARNING ⚠️ {im_file}: corrupt JPEG restored and saved aaa'
-        if lb_file.split('/')[-2] == '18':
+        if lb_file.split('/')[-2] in ['18', '19'] and not os.path.isfile(lb_file):
             with open(lb_file, 'w') as f:
                 f.writelines('new')
             f.close()
@@ -108,8 +109,11 @@ def verify_image_label(args):
         if os.path.isfile(lb_file):
             nf = 1  # label found
             with open(lb_file) as f:
-                if lb_file.split('/')[-2] == '18':
-                    bbox = [0, 0, shape[0], shape[1]]
+                if lb_file.split('/')[-2] == '19':
+                    bbox = [0.3, 0.3, 0.7, 0.7]
+                    pose = [0, 0, 0]
+                elif lb_file.split('/')[-2] == '18':
+                    bbox = [0, 0, 0.01, 0.01]
                     pose = [0, 0, 0]
                 else:
                     context = json.load(f)
@@ -235,7 +239,7 @@ def check_det_dataset(dataset: str):
     train_set = data_dir / 'train'
     test_set = data_dir / 'test' if (data_dir / 'test').exists() else data_dir / 'val'  # data/test or data/val
     # nc = len([x for x in (data_dir / 'train').glob('*') if x.is_dir()])  # number of classes
-    nc = 11
+    nc = 12
     names = [x.name for x in (data_dir / 'train').iterdir() if x.is_dir()]  # class names list
     names = dict(enumerate(sorted(names)))
     return {'train': train_set, 'val': test_set, 'nc': nc, 'names': names}

@@ -144,6 +144,7 @@ class Exporter:
     @smart_inference_mode()
     def __call__(self, model=None):
         self.run_callbacks('on_export_start')
+        print(self.args)
         t = time.time()
         format = self.args.format.lower()  # to lowercase
         if format in {'tensorrt', 'trt'}:  # engine aliases
