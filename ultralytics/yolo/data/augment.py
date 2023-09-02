@@ -555,11 +555,23 @@ class LetterBox_Rot:
         R[:2] = cv2.getRotationMatrix2D(angle=a, center=(int(new_shape[0]//2), int(new_shape[1]//2)), scale=1)
         
         return R, a
+    def cut_image_label(self, img, labels, index):
+        a = (index-1)//2
+        b = (index-1)%2
+        h, w = img.shape[:2]
+        img = img[int(a*h//2):int((a+1)*h//2) , int(b*w//2):int((b+1)*w//2)]
+        labels['cls'] = np.array([[0]], dtype=np.float32)
+        labels['instances'] = Instances(np.array([[0, 0, 0.01, 0.01]], dtype=np.float32)
+                                       ,np.array([[0, 0, 0]], dtype=np.float32), None, None, bbox_format='xyxy', normalized=True)
+        return img, labels
     
     def __call__(self, labels=None, image=None):
         if labels is None:
             labels = {}
         img = labels.get('img') if image is None else image
+        a = random.randint(-4,4)
+        if not labels is None and a>0:
+            img, labels = self.cut_image_label(img, labels, a)
         shape = img.shape[:2]  # current shape [height, width]
         new_shape = labels.pop('rect_shape', self.new_shape)
         if isinstance(new_shape, int):
