@@ -22,7 +22,7 @@ def test():
     model.predict('/mnt/e/data/classification/else/error/1.jpg')
     
 def export():
-    path = '/home/gregory/code/ultralytics/runs/detect/train2/weights/best.pt'
+    path = '/home/gregory/code/ultralytics/runs/detect/train9/weights/last.pt'
     # path = '/mnt/e/share/last.pt'
     model = YOLO(path)
     model.export(format='onnx')
@@ -40,4 +40,4 @@ def check():
     from ultralytics.yolo.utils.checks import check_font
     check_font('Arial.ttf')
 if __name__=='__main__':
-    train()
+    export()

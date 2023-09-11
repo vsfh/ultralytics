@@ -108,7 +108,7 @@ def verify_image_label(args):
                     bbox = [0.3, 0.3, 0.7, 0.7]
                     pose = [0, 0, 0]
                 elif lb_file.split('/')[-2] == '18':
-                    bbox = [0, 0, 0.01, 0.01]
+                    bbox = [0.01, 0.01, 0.98, 0.98]
                     pose = [0, 0, 0]
                 else:
                     context = json.load(f)

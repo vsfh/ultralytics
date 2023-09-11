@@ -556,14 +556,19 @@ class LetterBox_Rot:
         
         return R, a
     def cut_image_label(self, img, labels, index):
-        a = (index-1)//2
-        b = (index-1)%2
+        a = random.randint(0,8)
+        b = random.randint(0,8)
+        c = random.randint(1,10-a)
+        d = random.randint(1,10-b)
+        
         h, w = img.shape[:2]
-        img = img[int(a*h//2):int((a+1)*h//2) , int(b*w//2):int((b+1)*w//2)]
+        img_cut = img[int(a*h/10.0):int((a+c)*h/10.0) , int(a*w/10.0):int((a+c)*w/10.0)]
+        img_cut = cv2.resize(img_cut, (w,h), interpolation=cv2.INTER_LINEAR)
+        
         labels['cls'] = np.array([[0]], dtype=np.float32)
-        labels['instances'] = Instances(np.array([[0, 0, 0.01, 0.01]], dtype=np.float32)
+        labels['instances'] = Instances(np.array([[0.1, 0.1, 0.8, 0.8]], dtype=np.float32)
                                        ,np.array([[0, 0, 0]], dtype=np.float32), None, None, bbox_format='xyxy', normalized=True)
-        return img, labels
+        return img_cut, labels
     
     def __call__(self, labels=None, image=None):
         if labels is None:
