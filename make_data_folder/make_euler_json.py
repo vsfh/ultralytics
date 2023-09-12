@@ -10,7 +10,8 @@ from scipy.spatial.transform import Rotation as R
 import shutil
 
 PATH = '/mnt/e/data/classification'
-LABEL_PATH = PATH+'/label_inner_04'
+LABEL_DIR = PATH+'/new_label/network_res'
+IMG_DIR = PATH+'/image_folder_04'
 cls_dict = {
     "侧位片":'00',
     "覆盖像":'01',
@@ -188,22 +189,28 @@ def draw_pose(img, pose_ori, tdx=None, tdy=None, size = 100):
     cv2.line(img, (int(tdx), int(tdy)), (int(x2),int(y2)),(255,0,0),4)
     cv2.line(img, (int(tdx), int(tdy)), (int(x3),int(y3)),(0,255,0),4)
     return img
-
+from tqdm import tqdm
 def vis_json():
-    file = '57952522842935166_4347.json'
-    path = opj(LABEL_PATH ,file)
-    with open(path, 'r') as f:
-        context = json.load(f)
+    sub_folder = 'val/01'
+    for file_name in tqdm(os.listdir(f'/mnt/e/data/classification/image_folder_04/{sub_folder}')):
+        file = f'{sub_folder}/{file_name}'
+        label_path = opj(LABEL_DIR,sub_folder[-2:] ,file_name.replace('jpg', 'json'))
+        img_path = opj(IMG_DIR ,file)
+        with open(label_path, 'r') as f:
+            context = json.load(f)
 
-    k = np.random.randint(-3,3)
-    img = cv2.imread(context['img_path'])
-    cv2.rectangle(img, tuple(context['roi'][:2]), tuple(context['roi'][-2:]), (255,0,0), 2)
-    img = np.rot90(img, k)
-    matrix = np.array(context['euler'])[0]
-    rot_matrix = R.from_euler('xyz',[0,0,-90*k], degrees=True).as_matrix()
-    img_ = draw_pose(img, rot_matrix@matrix)
-    cv2.imshow('img', img_)
-    cv2.waitKey(0)
+        k = np.random.randint(-3,3)
+        img = cv2.imread(img_path)
+        if (context['xyxy'][2]-context['xyxy'][0])*(context['xyxy'][3]-context['xyxy'][1])/(img.shape[0]*img.shape[1]) > 0.95:
+            os.remove(img_path)  
+            # cv2.rectangle(img, (int(context['xyxy'][0]), int(context['xyxy'][1])), (int(context['xyxy'][2]), int(context['xyxy'][3])), (255,0,0), 2)
+            # img = cv2.resize(img, (640, int(img.shape[0]/img.shape[1]*640)), interpolation=cv2.INTER_LINEAR)
+            # img = np.rot90(img, k)
+            # matrix = np.array(context['euler'])[0]
+            # rot_matrix = R.from_euler('xyz',[0,0,-90*k], degrees=True).as_matrix()
+            # img_ = draw_pose(img, rot_matrix@matrix)
+            # cv2.imshow('img', img)
+            # cv2.waitKey(0)
     return
     for file in os.listdir(LABEL_PATH):
         path = opj(LABEL_PATH ,file)
