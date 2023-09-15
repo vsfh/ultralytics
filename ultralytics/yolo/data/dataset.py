@@ -152,7 +152,7 @@ class YOLODataset(BaseDataset):
             transforms = Compose([LetterBox_Rot(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
             
         else:
-            transforms = Compose([LetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
+            transforms = Compose([LetterBox_Rot(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
         transforms.append(
             Format(bbox_format='xywh',
                    normalize=True,

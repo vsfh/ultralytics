@@ -72,14 +72,14 @@ face_cls = ['05','06','07','08','10','11','13','14','15','16']
 project = {
     '18':['其他',0],
     '00':['侧位片',1],
-    '01':['覆盖像',2],
-    '02':['全景片',3],
-    '03':['上颌合面像',4],
-    '04':['下颌合面像',5],
-    '09':['右侧咬合像',6],
-    '12':['正面咬合像',7],
-    '17':['左侧咬合像',8],
-    '19':['小牙片',11],
+    '01':['覆盖像',5],
+    '02':['全景片',2],
+    '03':['上颌合面像',3],
+    '04':['下颌合面像',4],
+    '09':['右侧咬合像',5],
+    '12':['正面咬合像',6],
+    '17':['左侧咬合像',7],
+    '19':['小牙片',8],
 }
 def verify_image_label(args):
     pose_dim = 3
@@ -105,7 +105,7 @@ def verify_image_label(args):
             nf = 1  # label found
             with open(lb_file) as f:
                 if lb_file.split('/')[-2] == '19':
-                    bbox = [0.3, 0.3, 0.7, 0.7]
+                    bbox = [0.1, 0.1, 0.9, 0.9]
                     pose = [0, 0, 0]
                 elif lb_file.split('/')[-2] == '18':
                     bbox = [0.01, 0.01, 0.98, 0.98]
@@ -234,7 +234,7 @@ def check_det_dataset(dataset: str):
     train_set = data_dir / 'train'
     test_set = data_dir / 'test' if (data_dir / 'test').exists() else data_dir / 'val'  # data/test or data/val
     # nc = len([x for x in (data_dir / 'train').glob('*') if x.is_dir()])  # number of classes
-    nc = 12
+    nc = 11
     names = [x.name for x in (data_dir / 'train').iterdir() if x.is_dir()]  # class names list
     names = dict(enumerate(sorted(names)))
     return {'train': train_set, 'val': test_set, 'nc': nc, 'names': names}

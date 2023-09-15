@@ -558,15 +558,15 @@ class LetterBox_Rot:
     def cut_image_label(self, img, labels, index):
         a = random.randint(0,8)
         b = random.randint(0,8)
-        c = random.randint(1,10-a)
+        c = 2
         d = random.randint(1,10-b)
         
         h, w = img.shape[:2]
-        img_cut = img[int(a*h/10.0):int((a+c)*h/10.0) , int(a*w/10.0):int((a+c)*w/10.0)]
+        img_cut = img[int(a*h/10.0):int((a+c)*h/10.0) , int(b*w/10.0):int((b+c)*w/10.0)]
         img_cut = cv2.resize(img_cut, (w,h), interpolation=cv2.INTER_LINEAR)
         
         labels['cls'] = np.array([[0]], dtype=np.float32)
-        labels['instances'] = Instances(np.array([[0.1, 0.1, 0.8, 0.8]], dtype=np.float32)
+        labels['instances'] = Instances(np.array([[0.1, 0.1, 0.9, 0.9]], dtype=np.float32)
                                        ,np.array([[0, 0, 0]], dtype=np.float32), None, None, bbox_format='xyxy', normalized=True)
         return img_cut, labels
     
@@ -574,9 +574,10 @@ class LetterBox_Rot:
         if labels is None:
             labels = {}
         img = labels.get('img') if image is None else image
-        a = random.randint(-4,4)
+        a = random.randint(-4,2)
         if not labels is None and a>0:
-            img, labels = self.cut_image_label(img, labels, a)
+            if int(labels['cls']) != 0:
+                img, labels = self.cut_image_label(img, labels, a)
         shape = img.shape[:2]  # current shape [height, width]
         new_shape = labels.pop('rect_shape', self.new_shape)
         if isinstance(new_shape, int):

@@ -57,7 +57,7 @@ class DetectionValidator(BaseValidator):
         return ('%22s' + '%11s' * 6) % ('Class', 'Images', 'Instances', 'Box(P', 'R', 'mAP50', 'mAP50-95)')
 
     def postprocess(self, preds):
-        nc = 12
+        nc = 11
         preds = ops.non_max_suppression(preds[0][:,:nc+4,:],
                                         self.args.conf,
                                         self.args.iou,
