@@ -539,6 +539,47 @@ class RandomFlip:
         labels['cls'] = cls
         return labels
 
+class BiteFlip:
+
+    def __init__(self, p=0.5, direction='horizontal', lr_map=None) -> None:
+        assert direction in ['horizontal', 'vertical'], f'Support direction `horizontal` or `vertical`, got {direction}'
+        assert 0 <= p <= 1.0
+
+        self.p = p
+        self.direction = direction
+        self.lr_map = lr_map
+        self.bite_dict = [5,7]
+
+    def __call__(self, labels):
+        img = labels['img']
+        instances = labels.pop('instances')
+        cls = labels.pop('cls')
+        if cls not in self.bite_dict:
+            return labels
+        else:
+            instances.convert_bbox(format='xywh')
+            h, w = img.shape[:2]
+            h = 1 if instances.normalized else h
+            w = 1 if instances.normalized else w
+
+            # Flip up-down
+            if random.random() < self.p:
+                if self.lr_map is not None:
+                    dtype = cls.dtype
+                    cls = np.take(self.lr_map, cls.astype(int)).astype(dtype)
+
+                if self.direction == 'vertical':
+                    img = np.flipud(img)
+                    instances.flipud(h)
+                else:
+                    img = np.fliplr(img)
+                    instances.fliplr(w)
+
+            labels['img'] = np.ascontiguousarray(img)
+            labels['instances'] = instances
+            labels['cls'] = cls
+            return labels
+    
 class LetterBox_Rot:
     """Resize image and padding for detection, instance segmentation, pose"""
 
@@ -551,7 +592,7 @@ class LetterBox_Rot:
 
     def get_rot_mat(self, new_shape):
         R = np.eye(3)
-        a = random.choice([-180, -90, 0, 90])  # add 90deg rotations to small rotations
+        a = random.choice([-180, -90, 0, 90, 180])  # add 90deg rotations to small rotations
         R[:2] = cv2.getRotationMatrix2D(angle=a, center=(int(new_shape[0]//2), int(new_shape[1]//2)), scale=1)
         
         return R, a
@@ -574,9 +615,9 @@ class LetterBox_Rot:
         if labels is None:
             labels = {}
         img = labels.get('img') if image is None else image
-        a = random.randint(-4,2)
+        a = random.randint(-10,2)
         if not labels is None and a>0:
-            if int(labels['cls']) != 0:
+            if int(labels['cls']) not in [1,2,8,9,10]:
                 img, labels = self.cut_image_label(img, labels, a)
         shape = img.shape[:2]  # current shape [height, width]
         new_shape = labels.pop('rect_shape', self.new_shape)

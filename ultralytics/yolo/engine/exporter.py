@@ -156,7 +156,9 @@ class Exporter:
         jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle = flags  # export booleans
 
         # Load PyTorch model
-        self.device = select_device('cpu' if self.args.device is None else self.args.device)
+        # self.device = select_device('cpu' if self.args.device is None else self.args.device)
+        self.device = torch.device('cuda:0')
+        
         if self.args.half and onnx and self.device.type == 'cpu':
             LOGGER.warning('WARNING ⚠️ half=True only compatible with GPU export, i.e. use device=0')
             self.args.half = False
@@ -202,10 +204,11 @@ class Exporter:
         warnings.filterwarnings('ignore', category=torch.jit.TracerWarning)  # suppress TracerWarning
         warnings.filterwarnings('ignore', category=UserWarning)  # suppress shape prim::Constant missing ONNX warning
         warnings.filterwarnings('ignore', category=DeprecationWarning)  # suppress CoreML np.bool deprecation warning
+        print(torch.cuda.is_available())
 
         # Assign
-        self.im = im
-        self.model = model
+        self.im = im.cuda()
+        self.model = model.cuda()
         self.file = file
         self.output_shape = tuple(y.shape) if isinstance(y, torch.Tensor) else tuple(tuple(x.shape) for x in y)
         self.pretty_name = self.file.stem.replace('yolo', 'YOLO')
@@ -287,7 +290,7 @@ class Exporter:
             from torch.utils.mobile_optimizer import optimize_for_mobile
             optimize_for_mobile(ts)._save_for_lite_interpreter(str(f), _extra_files=extra_files)
         else:
-            ts.save(str(f), _extra_files=extra_files)
+            ts.save('/home/gregory/code/ultralytics/runs/detect/model10.8.pt', _extra_files=extra_files)
         return f, None
 
     @try_export

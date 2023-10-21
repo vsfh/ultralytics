@@ -1,5 +1,6 @@
 from ultralytics import YOLO
 import os
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import os.path as osp
 import numpy as np
 import torch
@@ -12,7 +13,7 @@ def train():
     model = YOLO('./ultralytics/models/v8/yolov8m.yaml')
     path = '/data/shenfeihong/classification/image_folder_04/'
 
-    model.train(data=path, device='2,3,4,5,6,7')
+    model.train(data=path, device='1,2,3,4')
     # model.train(data=path)
     
 def test():
@@ -22,10 +23,10 @@ def test():
     model.predict('/mnt/e/data/classification/else/error/1.jpg')
     
 def export():
-    path = '/home/gregory/code/ultralytics/runs/detect/train4/weights/best.pt'
+    path = '/home/gregory/code/ultralytics/runs/detect/train/weights/last.pt'
     # path = '/mnt/e/share/last.pt'
     model = YOLO(path)
-    model.export(format='onnx')
+    model.export(format='torchscript')
 
 def load_cache():
     cache_path = "/data/shenfeihong/classification/network_res/00.cache"
@@ -39,5 +40,6 @@ def load_cache():
 def check():
     from ultralytics.yolo.utils.checks import check_font
     check_font('Arial.ttf')
+    
 if __name__=='__main__':
     export()

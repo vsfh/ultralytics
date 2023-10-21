@@ -100,6 +100,18 @@ class Bboxes:
         elif angle == 90:
             x1y1[:,:2] = self.bboxes[:,[2,1]]
             x2y2[:,:2] = self.bboxes[:,[0,3]]    
+            
+        elif angle == -270:
+            x1y1[:,:2] = self.bboxes[:,[2,1]]
+            x2y2[:,:2] = self.bboxes[:,[0,3]]    
+
+        elif angle == 180:
+            x1y1[:,:2] = self.bboxes[:,[2,3]]
+            x2y2[:,:2] = self.bboxes[:,[0,1]]
+        
+        elif angle == 270:
+            x1y1[:,:2] = self.bboxes[:,[0,3]]
+            x2y2[:,:2] = self.bboxes[:,[2,1]] 
         else:
             return
         
@@ -340,9 +352,10 @@ class Instances:
             self.bboxes[:, 2] = w - x1
         else:
             self.bboxes[:, 0] = w - self.bboxes[:, 0]
-        self.segments[..., 0] = w - self.segments[..., 0]
-        if self.keypoints is not None:
-            self.keypoints[..., 0] = w - self.keypoints[..., 0]
+        self.pose = [-self.pose[0], -self.pose[1], self.pose[2]]
+        # self.segments[..., 0] = w - self.segments[..., 0]
+        # if self.keypoints is not None:
+        #     self.keypoints[..., 0] = w - self.keypoints[..., 0]
 
     def clip(self, w, h):
         """Clips bounding boxes, segments, and keypoints values to stay within image boundaries."""
