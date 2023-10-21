@@ -551,12 +551,13 @@ class BiteFlip:
         self.bite_dict = [5,7]
 
     def __call__(self, labels):
-        img = labels['img']
-        instances = labels.pop('instances')
         cls = labels.pop('cls')
         if cls not in self.bite_dict:
+            labels['cls'] = cls
             return labels
         else:
+            img = labels['img']
+            instances = labels.pop('instances')
             instances.convert_bbox(format='xywh')
             h, w = img.shape[:2]
             h = 1 if instances.normalized else h

@@ -352,7 +352,8 @@ class Instances:
             self.bboxes[:, 2] = w - x1
         else:
             self.bboxes[:, 0] = w - self.bboxes[:, 0]
-        self.pose = [-self.pose[0], -self.pose[1], self.pose[2]]
+        self.pose[0,0] = -self.pose[0,0]
+        self.pose[0,1] = -self.pose[0,1]
         # self.segments[..., 0] = w - self.segments[..., 0]
         # if self.keypoints is not None:
         #     self.keypoints[..., 0] = w - self.keypoints[..., 0]
