@@ -191,7 +191,7 @@ def draw_pose(img, pose_ori, tdx=None, tdy=None, size = 100):
     return img
 from tqdm import tqdm
 def vis_json():
-    sub_folder = 'val/01'
+    sub_folder = 'val/12'
     for file_name in tqdm(os.listdir(f'/mnt/e/data/classification/image_folder_04/{sub_folder}')):
         file = f'{sub_folder}/{file_name}'
         label_path = opj(LABEL_DIR,sub_folder[-2:] ,file_name.replace('jpg', 'json'))
@@ -201,16 +201,16 @@ def vis_json():
 
         k = np.random.randint(-3,3)
         img = cv2.imread(img_path)
-        if (context['xyxy'][2]-context['xyxy'][0])*(context['xyxy'][3]-context['xyxy'][1])/(img.shape[0]*img.shape[1]) > 0.95:
-            os.remove(img_path)  
-            # cv2.rectangle(img, (int(context['xyxy'][0]), int(context['xyxy'][1])), (int(context['xyxy'][2]), int(context['xyxy'][3])), (255,0,0), 2)
-            # img = cv2.resize(img, (640, int(img.shape[0]/img.shape[1]*640)), interpolation=cv2.INTER_LINEAR)
-            # img = np.rot90(img, k)
-            # matrix = np.array(context['euler'])[0]
-            # rot_matrix = R.from_euler('xyz',[0,0,-90*k], degrees=True).as_matrix()
-            # img_ = draw_pose(img, rot_matrix@matrix)
-            # cv2.imshow('img', img)
-            # cv2.waitKey(0)
+        # if (context['xyxy'][2]-context['xyxy'][0])*(context['xyxy'][3]-context['xyxy'][1])/(img.shape[0]*img.shape[1]) > 0.95:
+            # os.remove(img_path)  
+        cv2.rectangle(img, (int(context['xyxy'][0]), int(context['xyxy'][1])), (int(context['xyxy'][2]), int(context['xyxy'][3])), (255,0,0), 2)
+        img = cv2.resize(img, (640, int(img.shape[0]/img.shape[1]*640)), interpolation=cv2.INTER_LINEAR)
+        # img = np.rot90(img, k)
+        # matrix = np.array(context['euler'])[0]
+        # rot_matrix = R.from_euler('xyz',[0,0,-90*k], degrees=True).as_matrix()
+        # img_ = draw_pose(img, rot_matrix@matrix)
+        cv2.imshow('img', img)
+        cv2.waitKey(0)
     return
     for file in os.listdir(LABEL_PATH):
         path = opj(LABEL_PATH ,file)
