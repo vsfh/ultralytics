@@ -70,16 +70,16 @@ def exif_size(img):
 smile_cls = ['05','07','10','13','15']
 face_cls = ['05','06','07','08','10','11','13','14','15','16']
 project = {
-    '18':['其他',0],
-    '00':['侧位片',1],
-    '01':['覆盖像',5],
-    '02':['全景片',2],
+    '18':['其他',11],
+    '00':['侧位片',2],
+    '01':['覆盖像',8],
+    '02':['全景片',1],
     '03':['上颌合面像',3],
     '04':['下颌合面像',4],
     '09':['右侧咬合像',5],
     '12':['正面咬合像',6],
     '17':['左侧咬合像',7],
-    '19':['小牙片',8],
+    '19':['小牙片',0],
 }
 def verify_image_label(args):
     pose_dim = 3
@@ -234,7 +234,7 @@ def check_det_dataset(dataset: str):
     train_set = data_dir / 'train'
     test_set = data_dir / 'test' if (data_dir / 'test').exists() else data_dir / 'val'  # data/test or data/val
     # nc = len([x for x in (data_dir / 'train').glob('*') if x.is_dir()])  # number of classes
-    nc = 11
+    nc = 12
     names = [x.name for x in (data_dir / 'train').iterdir() if x.is_dir()]  # class names list
     names = dict(enumerate(sorted(names)))
     return {'train': train_set, 'val': test_set, 'nc': nc, 'names': names}

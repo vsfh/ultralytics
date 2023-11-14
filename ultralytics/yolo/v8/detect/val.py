@@ -57,7 +57,7 @@ class DetectionValidator(BaseValidator):
         return ('%22s' + '%11s' * 6) % ('Class', 'Images', 'Instances', 'Box(P', 'R', 'mAP50', 'mAP50-95)')
 
     def postprocess(self, preds):
-        nc = 11
+        nc = 12
         preds = ops.non_max_suppression(preds[0][:,:nc+4,:],
                                         self.args.conf,
                                         self.args.iou,
@@ -186,6 +186,7 @@ class DetectionValidator(BaseValidator):
                     batch['batch_idx'],
                     batch['cls'].squeeze(-1),
                     batch['bboxes'],
+                    pos=batch['pose'],
                     paths=batch['im_file'],
                     fname=self.save_dir / f'val_batch{ni}_labels.jpg',
                     names=self.names)

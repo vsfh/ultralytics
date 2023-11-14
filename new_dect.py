@@ -13,17 +13,17 @@ def train():
     model = YOLO('./ultralytics/models/v8/yolov8m.yaml')
     path = '/data/shenfeihong/classification/image_folder_04/'
 
-    model.train(data=path, device='1,2,3,4')
+    model.train(data=path, device='1,4,5,6')
     # model.train(data=path)
     
 def test():
-    path = 'runs/detect/train4/weights/last.pt'
+    path = 'runs/detect/train7/weights/last.pt'
     path = '/mnt/e/share/last.pt'
     model = YOLO(path)
     model.predict('/mnt/e/data/classification/else/error/1.jpg')
     
 def export():
-    path = '/home/gregory/code/ultralytics/runs/detect/train/weights/last.pt'
+    path = '/home/gregory/code/ultralytics/runs/detect/train3/weights/last.pt'
     # path = '/mnt/e/share/last.pt'
     model = YOLO(path)
     model.export(format='torchscript')

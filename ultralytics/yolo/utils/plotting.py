@@ -392,8 +392,11 @@ def plot_images(images,
         if len(cls) > 0:
             idx = batch_idx == i
             classes = cls[idx].astype('int')
-            poses = pos[idx]
-
+            try:
+                poses = pos[idx]
+            except:
+                print('plotting error')
+                return
             if len(bboxes):
                 boxes = xywh2xyxy(bboxes[idx, :4]).T
                 labels = bboxes.shape[1] == 4  # labels if no conf column

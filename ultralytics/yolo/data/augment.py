@@ -548,7 +548,7 @@ class BiteFlip:
         self.p = p
         self.direction = direction
         self.lr_map = lr_map
-        self.bite_dict = [5,7]
+        self.bite_dict = [8]
 
     def __call__(self, labels):
         cls = labels.pop('cls')
@@ -565,6 +565,12 @@ class BiteFlip:
 
             # Flip up-down
             if random.random() < self.p:
+                # if cls==5:
+                #     labels['cls'] = np.array([[7]],dtype=np.float32)
+                # else:
+                #     labels['cls'] = np.array([[5]],dtype=np.float32)
+
+                    
                 if self.lr_map is not None:
                     dtype = cls.dtype
                     cls = np.take(self.lr_map, cls.astype(int)).astype(dtype)
@@ -576,9 +582,10 @@ class BiteFlip:
                     img = np.fliplr(img)
                     instances.fliplr(w)
 
+            labels['cls'] = cls
             labels['img'] = np.ascontiguousarray(img)
             labels['instances'] = instances
-            labels['cls'] = cls
+            
             return labels
     
 class LetterBox_Rot:
@@ -598,27 +605,36 @@ class LetterBox_Rot:
         
         return R, a
     def cut_image_label(self, img, labels, index):
-        a = random.randint(0,8)
-        b = random.randint(0,8)
-        c = 2
-        d = random.randint(1,10-b)
-        
         h, w = img.shape[:2]
-        img_cut = img[int(a*h/10.0):int((a+c)*h/10.0) , int(b*w/10.0):int((b+c)*w/10.0)]
-        img_cut = cv2.resize(img_cut, (w,h), interpolation=cv2.INTER_LINEAR)
+        labels['instances'].convert_bbox(format='xyxy')
+        instance = labels.pop('instances')
+        bbox = instance.bboxes
+        per1 = random.randint(0,5)/10.0
+        length = min((bbox[0,2]-bbox[0,0]), (bbox[0,3]-bbox[0,1]))
+        a = per1*length+bbox[0,0]
+        b = per1*length+bbox[0,1]
+        per = random.randint(6,9)/10.0
+        c = per*length+bbox[0,0]
+        d = per*length+bbox[0,1]
         
-        labels['cls'] = np.array([[0]], dtype=np.float32)
-        labels['instances'] = Instances(np.array([[0.1, 0.1, 0.9, 0.9]], dtype=np.float32)
-                                       ,np.array([[0, 0, 0]], dtype=np.float32), None, None, bbox_format='xyxy', normalized=True)
+        img_cut = img[int(b*h):int(d*h) , int(a*w):int(c*w)]
+        if not img_cut is None and not (0 in img_cut.shape):
+            img_cut = cv2.resize(img_cut, (w,h), interpolation=cv2.INTER_LINEAR)
+            labels['cls'] = np.array([[11]], dtype=np.float32)
+            labels['instances'] = Instances(np.array([[0.1, 0.1, 0.9, 0.9]], dtype=np.float32)
+                                        ,np.array([[0, 0, 0]], dtype=np.float32), None, None, bbox_format='xyxy', normalized=True)
+        else:
+            labels['instances'] = instance
+            img_cut = img
         return img_cut, labels
     
     def __call__(self, labels=None, image=None):
         if labels is None:
             labels = {}
         img = labels.get('img') if image is None else image
-        a = random.randint(-10,2)
+        a = random.randint(-6,2)
         if not labels is None and a>0:
-            if int(labels['cls']) not in [1,2,8,9,10]:
+            if int(labels['cls']) not in [6, 7, 8, 10]:
                 img, labels = self.cut_image_label(img, labels, a)
         shape = img.shape[:2]  # current shape [height, width]
         new_shape = labels.pop('rect_shape', self.new_shape)

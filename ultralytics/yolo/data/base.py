@@ -76,7 +76,7 @@ class BaseDataset(Dataset):
         self.pad = pad
         if self.rect:
             assert self.batch_size is not None
-            self.set_rectangle()
+        self.set_rectangle()
 
         # Buffer thread for mosaic images
         self.buffer = []  # buffer size = batch size
@@ -162,12 +162,12 @@ class BaseDataset(Dataset):
                                 interpolation=interp)
 
             # Add to buffer if training with augmentations
-            if self.augment:
-                self.ims[i], self.im_hw0[i], self.im_hw[i] = im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
-                self.buffer.append(i)
-                if len(self.buffer) >= self.max_buffer_length:
-                    j = self.buffer.pop(0)
-                    self.ims[j], self.im_hw0[j], self.im_hw[j] = None, None, None
+            # if self.augment:
+            self.ims[i], self.im_hw0[i], self.im_hw[i] = im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
+            self.buffer.append(i)
+            if len(self.buffer) >= self.max_buffer_length:
+                j = self.buffer.pop(0)
+                self.ims[j], self.im_hw0[j], self.im_hw[j] = None, None, None
 
             return im, (h0, w0), im.shape[:2]
 

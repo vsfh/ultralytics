@@ -145,14 +145,14 @@ class YOLODataset(BaseDataset):
     def build_transforms(self, hyp=None):
         print('augment', self.augment)
         """Builds and appends transforms to the list."""
-        if self.augment:
-            hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
-            hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
-            # transforms = v8_transforms(self, self.imgsz, hyp)
-            transforms = Compose([BiteFlip(), LetterBox_Rot(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
+        # if self.augment:
+        hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
+        hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
+        # transforms = v8_transforms(self, self.imgsz, hyp)
+        transforms = Compose([BiteFlip(), LetterBox_Rot(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
             
-        else:
-            transforms = Compose([BiteFlip(), LetterBox_Rot(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
+        # else:
+        #     transforms = Compose([BiteFlip(), LetterBox_Rot(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
         transforms.append(
             Format(bbox_format='xywh',
                    normalize=True,

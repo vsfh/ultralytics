@@ -290,7 +290,7 @@ class Exporter:
             from torch.utils.mobile_optimizer import optimize_for_mobile
             optimize_for_mobile(ts)._save_for_lite_interpreter(str(f), _extra_files=extra_files)
         else:
-            ts.save('/home/gregory/code/ultralytics/runs/detect/model10.8.pt', _extra_files=extra_files)
+            ts.save('/home/gregory/code/ultralytics/runs/detect/model11_13.pt', _extra_files=extra_files)
         return f, None
 
     @try_export

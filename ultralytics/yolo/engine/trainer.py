@@ -141,7 +141,7 @@ class BaseTrainer:
         self.tloss = None
         self.loss_names = ['Loss']
         self.csv = self.save_dir / 'results.csv'
-        self.plot_idx = [0, 1, 2]
+        self.plot_idx = [5,6,7,8,9]
 
         # Callbacks
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
@@ -346,8 +346,8 @@ class BaseTrainer:
                         ('%11s' * 2 + '%11.4g' * (2 + loss_len)) %
                         (f'{epoch + 1}/{self.epochs}', mem, *losses, batch['cls'].shape[0], batch['img'].shape[-1]))
                     self.run_callbacks('on_batch_end')
-                    if self.args.plots and ni in self.plot_idx:
-                        self.plot_training_samples(batch, ni)
+                    # if self.args.plots and ni in self.plot_idx:
+                    #     self.plot_training_samples(batch, ni)
 
                 self.run_callbacks('on_train_batch_end')
 

@@ -100,20 +100,15 @@ class Bboxes:
         elif angle == 90:
             x1y1[:,:2] = self.bboxes[:,[2,1]]
             x2y2[:,:2] = self.bboxes[:,[0,3]]    
-            
-        elif angle == -270:
-            x1y1[:,:2] = self.bboxes[:,[2,1]]
-            x2y2[:,:2] = self.bboxes[:,[0,3]]    
 
         elif angle == 180:
             x1y1[:,:2] = self.bboxes[:,[2,3]]
             x2y2[:,:2] = self.bboxes[:,[0,1]]
         
-        elif angle == 270:
-            x1y1[:,:2] = self.bboxes[:,[0,3]]
-            x2y2[:,:2] = self.bboxes[:,[2,1]] 
-        else:
+        elif angle == 0:
             return
+        else:
+            print('error rot angle')
         
         new_bbox[:,:2] = (x1y1 @ M.T)[:,:2]
         new_bbox[:,-2:] = (x2y2 @ M.T)[:,:2]
