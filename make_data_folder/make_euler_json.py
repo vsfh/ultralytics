@@ -191,46 +191,55 @@ def draw_pose(img, pose_ori, tdx=None, tdy=None, size = 100):
     return img
 from tqdm import tqdm
 def vis_json():
-    sub_folder = 'val/12'
-    for file_name in tqdm(os.listdir(f'/mnt/e/data/classification/image_folder_04/{sub_folder}')):
-        file = f'{sub_folder}/{file_name}'
-        label_path = opj(LABEL_DIR,sub_folder[-2:] ,file_name.replace('jpg', 'json'))
-        img_path = opj(IMG_DIR ,file)
-        with open(label_path, 'r') as f:
-            context = json.load(f)
+    sub_folder = 'val/08'
+    with open('/mnt/e/data/classification/face_pose.txt', 'w') as err_f:
+        for file_name in tqdm(os.listdir(f'/mnt/e/data/classification/image_folder_04/{sub_folder}')[:500]):
+            file = f'{sub_folder}/{file_name}'
+            label_path = opj(LABEL_DIR,sub_folder[-2:] ,file_name.replace('jpg', 'json'))
+            img_path = opj(IMG_DIR ,file)
+            with open(label_path, 'r') as f:
+                context = json.load(f)
 
-        k = np.random.randint(-3,3)
-        img = cv2.imread(img_path)
-        # if (context['xyxy'][2]-context['xyxy'][0])*(context['xyxy'][3]-context['xyxy'][1])/(img.shape[0]*img.shape[1]) > 0.95:
-            # os.remove(img_path)  
-        cv2.rectangle(img, (int(context['xyxy'][0]), int(context['xyxy'][1])), (int(context['xyxy'][2]), int(context['xyxy'][3])), (255,0,0), 2)
-        img = cv2.resize(img, (640, int(img.shape[0]/img.shape[1]*640)), interpolation=cv2.INTER_LINEAR)
-        # img = np.rot90(img, k)
-        # matrix = np.array(context['euler'])[0]
-        # rot_matrix = R.from_euler('xyz',[0,0,-90*k], degrees=True).as_matrix()
-        # img_ = draw_pose(img, rot_matrix@matrix)
-        cv2.imshow('img', img)
-        cv2.waitKey(0)
+            k = np.random.randint(-3,3)
+            img = cv2.imread(img_path)
+            # if (context['xyxy'][2]-context['xyxy'][0])*(context['xyxy'][3]-context['xyxy'][1])/(img.shape[0]*img.shape[1]) > 0.95:
+                # os.remove(img_path)  
+            cv2.rectangle(img, (int(context['xyxy'][0]), int(context['xyxy'][1])), (int(context['xyxy'][2]), int(context['xyxy'][3])), (255,0,0), 2)
+            img = cv2.resize(img, (640, int(img.shape[0]/img.shape[1]*640)), interpolation=cv2.INTER_LINEAR)
+            # img = np.rot90(img, k)
+            euler = np.array(context['euler'])[0]
+            if np.abs(euler[1])<70:
+                err_f.write(file_name+'\n')
+            # rot_matrix = R.from_euler('xyz', euler, degrees=True).as_matrix()
+            # img_ = draw_pose(img, rot_matrix)
+            # cv2.imshow('img', img_)
+            # cv2.waitKey(0)
+        err_f.close()
     return
-    for file in os.listdir(LABEL_PATH):
-        path = opj(LABEL_PATH ,file)
-        with open(path, 'r') as f:
-            context = json.load(f)
-        if context['group_id'] != '02':
-            continue
-        print(file)
-        k = np.random.randint(-3,3)
-        img = cv2.imread(context['img_path'])
-        img = np.rot90(img, k)
-        matrix = np.array(context['euler'])[0]
-        rot_matrix = R.from_euler('xyz',[0,0,-90*k], degrees=True).as_matrix()
-        if len(matrix.shape) != 2:
-            continue
-        img_ = draw_pose(img, rot_matrix@matrix)
-        cv2.imshow('img', img_)
-        cv2.waitKey(0)
-        break
 
+def vis_error():
+    sub_folder = 'val/08'
+    with open('/mnt/e/data/classification/face_pose.txt', 'r') as err_f:
+        file_name_list = err_f.readlines()
+        for file_name in file_name_list:
+            file_name = file_name.strip()
+            file = f'{sub_folder}/{file_name}'
+            label_path = opj(LABEL_DIR,sub_folder[-2:] ,file_name.replace('jpg', 'json'))
+            img_path = opj(IMG_DIR ,file)
+            with open(label_path, 'r') as f:
+                context = json.load(f)
+
+            img = cv2.imread(img_path)
+            cv2.rectangle(img, (int(context['xyxy'][0]), int(context['xyxy'][1])), (int(context['xyxy'][2]), int(context['xyxy'][3])), (255,0,0), 2)
+            img = cv2.resize(img, (640, int(img.shape[0]/img.shape[1]*640)), interpolation=cv2.INTER_LINEAR)
+
+            euler = np.array(context['euler'])[0]
+
+            rot_matrix = R.from_euler('xyz', euler, degrees=True).as_matrix()
+            img_ = draw_pose(img, rot_matrix)
+            cv2.imshow('img', img_)
+            cv2.waitKey(0)
+        err_f.close()
 def make_face_euler(mode='val', points=True):
     YOLO_CLASS_NAMES = ['face', 'tmp', 'mouth', 'nose']
     backend = 'native'
@@ -343,4 +352,4 @@ if __name__=='__main__':
     # make_inner_euler('val')
     # make_face_euler('train')
     # make_inner_euler('val')
-    vis_json()
+    vis_error()
