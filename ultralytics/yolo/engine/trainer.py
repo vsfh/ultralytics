@@ -350,6 +350,7 @@ class BaseTrainer:
                     #     self.plot_training_samples(batch, ni)
 
                 self.run_callbacks('on_train_batch_end')
+                break
 
             self.lr = {f'lr/pg{ir}': x['lr'] for ir, x in enumerate(self.optimizer.param_groups)}  # for loggers
 

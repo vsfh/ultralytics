@@ -146,6 +146,7 @@ class BaseDataset(Dataset):
         im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i]
         path = '/ssd/gregory/classification/image_folder_04/'
         path = '/data/shenfeihong/classification/image_folder_04/'
+        path = '/mnt/e/data/classification/image_folder_04/'
         f = os.path.join(path, f.split('/')[-3], f.split('/')[-2], f.split('/')[-1])
         if im is None:  # not cached in RAM
             if fn.exists():  # load npy
@@ -250,8 +251,8 @@ class BaseDataset(Dataset):
         label['img'], label['ori_shape'], label['resized_shape'] = self.load_image(index)
         label['ratio_pad'] = (label['resized_shape'][0] / label['ori_shape'][0],
                               label['resized_shape'][1] / label['ori_shape'][1])  # for evaluation
-        if self.rect:
-            label['rect_shape'] = self.batch_shapes[self.batch[index]]
+        # if self.rect:
+        #     label['rect_shape'] = self.batch_shapes[self.batch[index]]
         return self.update_labels_info(label)
 
     def __len__(self):

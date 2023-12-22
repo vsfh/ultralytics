@@ -56,7 +56,7 @@ def img2label_paths(img_paths):
     inner_clses = []
     label_list = []
     json_dir = '/data/shenfeihong/classification/network_res/'
-    # json_dir = '/mnt/e/data/classification/new_label/network_res'
+    json_dir = '/mnt/e/data/classification/new_label/network_res'
     for x in img_paths:
         label_list.append(os.path.join(json_dir, x.split('/')[-2], os.path.basename(x).replace('jpg', 'json')))
     return label_list
@@ -88,83 +88,83 @@ def verify_image_label(args):
     im_file, lb_file, prefix, keypoint, num_cls, nkpt, ndim = args
     # Number (missing, found, empty, corrupt), message, segments, keypoints
     nm, nf, ne, nc, msg, segments, keypoints = 0, 0, 0, 0, '', [], None
-    try:
-        # Verify images
-        im = Image.open(im_file)
-        im.verify()  # PIL verify
-        shape = exif_size(im)  # image size
-        shape = (shape[1], shape[0])  # hw
-        assert (shape[0] > 9) & (shape[1] > 9), f'image size {shape} <10 pixels'
-        assert im.format.lower() in IMG_FORMATS, f'invalid image format {im.format}'
-        folder_name = lb_file.split('/')[-2]    
-        if folder_name in ['18', '19'] and not os.path.isfile(lb_file):
-            with open(lb_file, 'w') as f:
-                f.writelines('new')
-            f.close()
-        # Verify labels
-        if os.path.isfile(lb_file):
-            nf = 1  # label found
-            with open(lb_file) as f:
-                
-                if project[folder_name][0] == 'small':
-                    bbox = [0.1, 0.1, 0.9, 0.9]
-                    pose = [0, 0, np.abs(np.random.randn())]
-                elif project[folder_name][0] == 'else':
-                    bbox = [0.01, 0.01, 0.98, 0.98]
-                    pose = [0, 0, 0]
-                else:
-                    context = json.load(f)
-                    bbox = [number for number in context['xyxy']]
-                    bbox[0], bbox[1] = max(0, bbox[0])/shape[1], max(0, bbox[1])/shape[0]
-                    bbox[2], bbox[3] = min(shape[1], bbox[2])/shape[1], min(shape[0], bbox[3])/shape[0]
-                    pose = context['euler']
-                if folder_name in smile_cls:
-                    cls = 9
-                elif folder_name in face_cls:
-                    cls = 10
-                else:
-                    cls = project[folder_name][1]
-                bbox = xyxy2xywh(np.array(bbox)).reshape(1, 4)
-                classes = np.array([cls], dtype=np.float32).reshape(1, 1)
-                euler = np.array(pose, dtype=np.float32).reshape(1, pose_dim)
-                lb = np.concatenate((classes, bbox, euler), 1)
-                lb = np.array(lb, dtype=np.float32)
-            nl = len(lb)
-            if nl:
-                if keypoint:
-                    assert lb.shape[1] == (5 + nkpt * ndim), f'labels require {(5 + nkpt * ndim)} columns each'
-                    assert (lb[:, 5::ndim] <= 1).all(), 'non-normalized or out of bounds coordinate labels'
-                    assert (lb[:, 6::ndim] <= 1).all(), 'non-normalized or out of bounds coordinate labels'
-                # else:
-                #     assert lb.shape[1] == 5, f'labels require 5 columns, {lb.shape[1]} columns detected'
-                #     assert (lb[:, 1:] <= 1).all(), \
-                #         f'non-normalized or out of bounds coordinates {lb[:, 1:][lb[:, 1:] > 1]}'
-                #     assert (lb >= 0).all(), f'negative label values {lb[lb < 0]}'
-                # All labels
-                max_cls = int(lb[:, 0].max())  # max label count
-                assert max_cls <= num_cls, \
-                    f'Label class {max_cls} exceeds dataset class count {num_cls}. ' \
-                    f'Possible class labels are 0-{num_cls - 1}'
-                _, i = np.unique(lb, axis=0, return_index=True)
-                if len(i) < nl:  # duplicate row check
-                    lb = lb[i]  # remove duplicates
-                    if segments:
-                        segments = [segments[x] for x in i]
-                    msg = f'{prefix}WARNING ⚠️ {im_file}: {nl - len(i)} duplicate labels removed'
+    # try:
+    # Verify images
+    im = Image.open(im_file)
+    im.verify()  # PIL verify
+    shape = exif_size(im)  # image size
+    shape = (shape[1], shape[0])  # hw
+    assert (shape[0] > 9) & (shape[1] > 9), f'image size {shape} <10 pixels'
+    assert im.format.lower() in IMG_FORMATS, f'invalid image format {im.format}'
+    folder_name = lb_file.split('/')[-2]    
+    if folder_name in ['18', '19'] and not os.path.isfile(lb_file):
+        with open(lb_file, 'w') as f:
+            f.writelines('new')
+        f.close()
+    # Verify labels
+    if os.path.isfile(lb_file):
+        nf = 1  # label found
+        with open(lb_file) as f:
+            
+            if folder_name == '19':
+                bbox = [0.1, 0.1, 0.9, 0.9]
+                pose = [0, 0, np.abs(np.random.randn())]
+            elif folder_name == '18':
+                bbox = [0.01, 0.01, 0.98, 0.98]
+                pose = [0, 0, 0]
             else:
-                ne = 1  # label empty
-                lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros(
-                    (0, 5+pose_dim), dtype=np.float32)
+                context = json.load(f)
+                bbox = [number for number in context['xyxy']]
+                bbox[0], bbox[1] = max(0, bbox[0])/shape[1], max(0, bbox[1])/shape[0]
+                bbox[2], bbox[3] = min(shape[1], bbox[2])/shape[1], min(shape[0], bbox[3])/shape[0]
+                pose = context['euler']
+            if folder_name in smile_cls:
+                cls = 9
+            elif folder_name in face_cls:
+                cls = 10
+            else:
+                cls = project[folder_name][1]
+            bbox = xyxy2xywh(np.array(bbox)).reshape(1, 4)
+            classes = np.array([cls], dtype=np.float32).reshape(1, 1)
+            euler = np.array(pose, dtype=np.float32).reshape(1, pose_dim)
+            lb = np.concatenate((classes, bbox, euler), 1)
+            lb = np.array(lb, dtype=np.float32)
+        nl = len(lb)
+        if nl:
+            if keypoint:
+                assert lb.shape[1] == (5 + nkpt * ndim), f'labels require {(5 + nkpt * ndim)} columns each'
+                assert (lb[:, 5::ndim] <= 1).all(), 'non-normalized or out of bounds coordinate labels'
+                assert (lb[:, 6::ndim] <= 1).all(), 'non-normalized or out of bounds coordinate labels'
+            # else:
+            #     assert lb.shape[1] == 5, f'labels require 5 columns, {lb.shape[1]} columns detected'
+            #     assert (lb[:, 1:] <= 1).all(), \
+            #         f'non-normalized or out of bounds coordinates {lb[:, 1:][lb[:, 1:] > 1]}'
+            #     assert (lb >= 0).all(), f'negative label values {lb[lb < 0]}'
+            # All labels
+            max_cls = int(lb[:, 0].max())  # max label count
+            assert max_cls <= num_cls, \
+                f'Label class {max_cls} exceeds dataset class count {num_cls}. ' \
+                f'Possible class labels are 0-{num_cls - 1}'
+            _, i = np.unique(lb, axis=0, return_index=True)
+            if len(i) < nl:  # duplicate row check
+                lb = lb[i]  # remove duplicates
+                if segments:
+                    segments = [segments[x] for x in i]
+                msg = f'{prefix}WARNING ⚠️ {im_file}: {nl - len(i)} duplicate labels removed'
         else:
-            nm = 1  # label missing
-            lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros((0, 5+pose_dim), dtype=np.float32)
+            ne = 1  # label empty
+            lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros(
+                (0, 5+pose_dim), dtype=np.float32)
+    else:
+        nm = 1  # label missing
+        lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros((0, 5+pose_dim), dtype=np.float32)
 
-        # lb = lb[:, :5]
-        return im_file, lb, shape, segments, keypoints, nm, nf, ne, nc, msg
-    except Exception as e:
-        nc = 1
-        msg = f'{prefix}WARNING ⚠️ {im_file}: ignoring corrupt image/label: {e}'
-        return [None, None, None, None, None, nm, nf, ne, nc, msg]
+    # lb = lb[:, :5]
+    return im_file, lb, shape, segments, keypoints, nm, nf, ne, nc, msg
+    # except Exception as e:
+    #     nc = 1
+    #     msg = f'{prefix}WARNING ⚠️ {im_file}: ignoring corrupt image/label: {e}'
+    #     return [None, None, None, None, None, nm, nf, ne, nc, msg]
 
 
 def polygon2mask(imgsz, polygons, color=1, downsample_ratio=1):

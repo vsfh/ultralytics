@@ -30,7 +30,7 @@ class DetectionValidator(BaseValidator):
     def preprocess(self, batch):
         batch['img'] = batch['img'].to(self.device, non_blocking=True)
         batch['img'] = (batch['img'].half() if self.args.half else batch['img'].float()) / 255
-        for k in ['batch_idx', 'cls', 'bboxes']:
+        for k in ['batch_idx', 'cls', 'bboxes', 'pose']:
             batch[k] = batch[k].to(self.device)
 
         nb = len(batch['img'])

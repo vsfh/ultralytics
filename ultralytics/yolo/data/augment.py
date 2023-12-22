@@ -638,6 +638,7 @@ class LetterBox_Rot:
                 img, labels = self.cut_image_label(img, labels, a)
         shape = img.shape[:2]  # current shape [height, width]
         new_shape = labels.pop('rect_shape', self.new_shape)
+        new_shape = self.new_shape
         if isinstance(new_shape, int):
             new_shape = (new_shape, new_shape)
 

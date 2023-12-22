@@ -124,8 +124,8 @@ class BaseValidator:
             # if isinstance(self.args.data, str) and self.args.data.endswith('.yaml'):
             if isinstance(self.args.data, str):
                 self.data = check_det_dataset(self.args.data)
-            elif self.args.task == 'classify':
-                self.data = check_cls_dataset(self.args.data)
+            # elif self.args.task == 'classify':
+            #     self.data = check_cls_dataset(self.args.data)
             else:
                 raise FileNotFoundError(emojis(f"Dataset '{self.args.data}' for task={self.args.task} not found ❌"))
 
