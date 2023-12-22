@@ -191,7 +191,7 @@ def draw_pose(img, pose_ori, tdx=None, tdy=None, size = 100):
     return img
 from tqdm import tqdm
 def vis_json():
-    sub_folder = 'val/08'
+    sub_folder = 'train/08'
     with open('/mnt/e/data/classification/face_pose.txt', 'w') as err_f:
         for file_name in tqdm(os.listdir(f'/mnt/e/data/classification/image_folder_04/{sub_folder}')[:500]):
             file = f'{sub_folder}/{file_name}'

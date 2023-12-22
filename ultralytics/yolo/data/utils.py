@@ -29,7 +29,22 @@ RANK = int(os.getenv('RANK', -1))
 PIN_MEMORY = str(os.getenv('PIN_MEMORY', True)).lower() == 'true'  # global pin_memory for dataloaders
 IMAGENET_MEAN = 0.485, 0.456, 0.406  # RGB mean
 IMAGENET_STD = 0.229, 0.224, 0.225  # RGB standard deviation
-
+pose_dim = 3
+nc = 12
+smile_cls = ['05','07','10','13','15']
+face_cls = ['06','08','11','14','16']
+project = {
+    '18':['else',11],
+    '00':['ceph',2],
+    '01':['bite',8],
+    '02':['pano',1],
+    '03':['upper',3],
+    '04':['lower',4],
+    '09':['right',5],
+    '12':['front',6],
+    '17':['left',7],
+    '19':['small',0],
+}
 # Get orientation exif tag
 for orientation in ExifTags.TAGS.keys():
     if ExifTags.TAGS[orientation] == 'Orientation':
@@ -67,22 +82,8 @@ def exif_size(img):
             s = (s[1], s[0])
     return s
 
-smile_cls = ['05','07','10','13','15']
-face_cls = ['05','06','07','08','10','11','13','14','15','16']
-project = {
-    '18':['其他',11],
-    '00':['侧位片',2],
-    '01':['覆盖像',8],
-    '02':['全景片',1],
-    '03':['上颌合面像',3],
-    '04':['下颌合面像',4],
-    '09':['右侧咬合像',5],
-    '12':['正面咬合像',6],
-    '17':['左侧咬合像',7],
-    '19':['小牙片',0],
-}
+
 def verify_image_label(args):
-    pose_dim = 3
     """Verify one image-label pair."""
     im_file, lb_file, prefix, keypoint, num_cls, nkpt, ndim = args
     # Number (missing, found, empty, corrupt), message, segments, keypoints
@@ -95,8 +96,8 @@ def verify_image_label(args):
         shape = (shape[1], shape[0])  # hw
         assert (shape[0] > 9) & (shape[1] > 9), f'image size {shape} <10 pixels'
         assert im.format.lower() in IMG_FORMATS, f'invalid image format {im.format}'
-
-        if lb_file.split('/')[-2] in ['18', '19'] and not os.path.isfile(lb_file):
+        folder_name = lb_file.split('/')[-2]    
+        if folder_name in ['18', '19'] and not os.path.isfile(lb_file):
             with open(lb_file, 'w') as f:
                 f.writelines('new')
             f.close()
@@ -104,10 +105,11 @@ def verify_image_label(args):
         if os.path.isfile(lb_file):
             nf = 1  # label found
             with open(lb_file) as f:
-                if lb_file.split('/')[-2] == '19':
+                
+                if project[folder_name][0] == 'small':
                     bbox = [0.1, 0.1, 0.9, 0.9]
-                    pose = [0, 0, 0]
-                elif lb_file.split('/')[-2] == '18':
+                    pose = [0, 0, np.abs(np.random.randn())]
+                elif project[folder_name][0] == 'else':
                     bbox = [0.01, 0.01, 0.98, 0.98]
                     pose = [0, 0, 0]
                 else:
@@ -116,7 +118,6 @@ def verify_image_label(args):
                     bbox[0], bbox[1] = max(0, bbox[0])/shape[1], max(0, bbox[1])/shape[0]
                     bbox[2], bbox[3] = min(shape[1], bbox[2])/shape[1], min(shape[0], bbox[3])/shape[0]
                     pose = context['euler']
-                folder_name = lb_file.split('/')[-2]    
                 if folder_name in smile_cls:
                     cls = 9
                 elif folder_name in face_cls:
@@ -127,12 +128,6 @@ def verify_image_label(args):
                 classes = np.array([cls], dtype=np.float32).reshape(1, 1)
                 euler = np.array(pose, dtype=np.float32).reshape(1, pose_dim)
                 lb = np.concatenate((classes, bbox, euler), 1)
-                
-                # lb = [x.split() for x in f.read().strip().splitlines() if len(x)]
-                # if any(len(x) > 6 for x in lb) and (not keypoint):  # is segment
-                #     classes = np.array([x[0] for x in lb], dtype=np.float32)
-                #     segments = [np.array(x[1:], dtype=np.float32).reshape(-1, 2) for x in lb]  # (cls, xy1...)
-                #     lb = np.concatenate((classes.reshape(-1, 1), segments2boxes(segments)), 1)  # (cls, xywh)
                 lb = np.array(lb, dtype=np.float32)
             nl = len(lb)
             if nl:
@@ -228,13 +223,12 @@ def polygons2masks_overlap(imgsz, segments, downsample_ratio=1):
     return masks, index
 
 def check_det_dataset(dataset: str):
+    print('checking det dataset...')
     data_dir = (DATASETS_DIR / dataset).resolve()
     print(data_dir)
 
     train_set = data_dir / 'train'
     test_set = data_dir / 'test' if (data_dir / 'test').exists() else data_dir / 'val'  # data/test or data/val
-    # nc = len([x for x in (data_dir / 'train').glob('*') if x.is_dir()])  # number of classes
-    nc = 12
     names = [x.name for x in (data_dir / 'train').iterdir() if x.is_dir()]  # class names list
     names = dict(enumerate(sorted(names)))
     return {'train': train_set, 'val': test_set, 'nc': nc, 'names': names}

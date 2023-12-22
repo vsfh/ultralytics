@@ -23,10 +23,10 @@ def test():
     model.predict('/mnt/e/data/classification/else/error/1.jpg')
     
 def export():
-    path = '/home/gregory/code/ultralytics/runs/detect/train3/weights/last.pt'
+    path = '/home/gregory/code/ultralytics/runs/detect/train3/weights/best.pt'
     # path = '/mnt/e/share/last.pt'
     model = YOLO(path)
-    model.export(format='torchscript')
+    model.export(format='onnx')
 
 def load_cache():
     cache_path = "/data/shenfeihong/classification/network_res/00.cache"
