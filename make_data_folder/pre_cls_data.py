@@ -1,8 +1,8 @@
-from tritoninferencer import TritonInferencer
+# from tritoninferencer import TritonInferencer
 import os
 import cv2
 import numpy as np
-tinf = TritonInferencer("127.0.0.1:8001")
+# tinf = TritonInferencer("127.0.0.1:8001")
 
 def preprocess(img, h = 224, w = 224):
     # letter box
@@ -44,6 +44,14 @@ def delete(cls):
                 os.remove(path)
                 print('Img deleted')
 
+def delete_txt(cls):
+    with open(f'/home/gregory/code/ultralytics/make_data_folder/{cls}.txt', 'r') as f:
+        lines = f.readlines()
+    lines = [line.strip() for line in lines]
+    for img_name in lines:
+        img_path = f'/data/shenfeihong/classification/image_folder_04/train/{cls}/{img_name}'
+        os.remove(img_path)
+        
 def main(cls):
     img_folder = f'/mnt/e/data/classification/image_folder_04/val/{cls}/'
 
@@ -140,5 +148,8 @@ if __name__=='__main__':
     }
     # for key, item in cls_dict.items():
     #     main(item)
-    delete('00')
+    face_ceph = ['07', '08', '15', '16']
+    face_45 = ['05','06','13','14']
+    for face in face_45:
+        delete_txt(face)
 
