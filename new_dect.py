@@ -12,10 +12,10 @@ import shutil
 def train():
     model = YOLO('./ultralytics/models/v8/yolov8m.yaml')
     path = '/data/shenfeihong/classification/image_folder_04/'
-    path = '/mnt/e/data/classification/image_folder_04/'
+    # path = '/mnt/e/data/classification/image_folder_04/'
 
-    # model.train(data=path, device='1,4,5,6')
-    model.train(data=path)
+    model.train(data=path, device='1,2,3')
+    # model.train(data=path)
     
 def test():
     path = 'runs/detect/train7/weights/last.pt'
@@ -27,6 +27,8 @@ def export():
     path = '/home/gregory/code/ultralytics/runs/detect/train3/weights/best.pt'
     # path = '/mnt/e/share/last.pt'
     model = YOLO(path)
+    # model.export(format='torchs1
+    # cript')
     model.export(format='onnx')
 
 def load_cache():
@@ -43,4 +45,4 @@ def check():
     check_font('Arial.ttf')
     
 if __name__=='__main__':
-    train()
+    export()

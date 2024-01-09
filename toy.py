@@ -32,14 +32,7 @@ def export():
     model = YOLO('./runs/custom/train2/weights/best.pt')
     success = model.export(dynamic=True,format="onnx")
 
-def train():
-    model = YOLO('./ultralytics/models/v8/custom/yolov8m-cus.yaml')
-    # model = YOLO('./runs/custom/train/weights/last.pt')
-    # model._load('')
-    model.train(data='/data/shenfeihong/classification/image_folder_04/')
-    # results = model("/home/disk/github/ultralytics/data/example/C01002721169_profile.jpg") 
-    # print(results)
-    pass
+
 
 def infer():
     model = YOLO('./runs/custom/train/weights/last.pt')

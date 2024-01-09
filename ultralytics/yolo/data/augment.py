@@ -633,9 +633,9 @@ class LetterBox_Rot:
             labels = {}
         img = labels.get('img') if image is None else image
         a = random.randint(-6,2)
-        if not labels is None and a>0:
-            if int(labels['cls']) not in [6, 7, 8, 10]:
-                img, labels = self.cut_image_label(img, labels, a)
+        # if not labels is None and a>0:
+        #     if int(labels['cls']) not in [6, 7, 8, 10]:
+        #         img, labels = self.cut_image_label(img, labels, a)
         shape = img.shape[:2]  # current shape [height, width]
         new_shape = labels.pop('rect_shape', self.new_shape)
         new_shape = self.new_shape
@@ -673,7 +673,8 @@ class LetterBox_Rot:
         R, angle = self.get_rot_mat(new_shape)
         img = cv2.warpAffine(img, R[:2], dsize=new_shape, borderValue=(0, 0, 0))
 
-
+        if len(labels['cls'])==0:
+            pass
         if len(labels):
             labels = self._update_labels(labels, ratio, dw, dh, R, angle)
             labels['img'] = img
@@ -883,13 +884,16 @@ class Format:
         labels['img'] = self._format_img(img)
         labels['cls'] = torch.from_numpy(cls) if nl else torch.zeros(nl)
         labels['bboxes'] = torch.from_numpy(instances.bboxes) if nl else torch.zeros((nl, 4))
-        poses = []
-        for i in range(len(instances.pose)):
-            single_pose = instances.pose[i]
-            poses.append(R.from_euler('xyz', single_pose, degrees=True).as_quat().reshape(1,4))
-        poses = np.concatenate(poses, 0)
-            
-        labels['pose'] = torch.from_numpy(poses) if nl else torch.zeros((nl, self.pose_dim))
+        if nl:
+            poses = []
+            for i in range(len(instances.pose)):
+                single_pose = instances.pose[i]
+                poses.append(R.from_euler('xyz', single_pose, degrees=True).as_quat().reshape(1,4))
+            poses = np.concatenate(poses, 0)
+                
+            labels['pose'] = torch.from_numpy(poses) 
+        else:
+            labels['pose'] = torch.zeros((nl, self.pose_dim))
         
         if self.return_keypoint:
             labels['keypoints'] = torch.from_numpy(instances.keypoints) if nl else torch.zeros((nl, 17, 2))

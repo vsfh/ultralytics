@@ -39,7 +39,7 @@ class DetectionTrainer(BaseTrainer):
         assert mode in ['train', 'val']
         with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
             dataset = self.build_dataset(dataset_path, mode, batch_size)
-        shuffle = mode == 'train'
+        shuffle = True
         if getattr(dataset, 'rect', False) and shuffle:
             print("WARNING ⚠️ 'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")
             shuffle = False
@@ -198,7 +198,7 @@ class Loss:
         if fg_mask.sum():
             loss[0], loss[2] = self.bbox_loss(pred_distri, pred_bboxes, anchor_points, target_bboxes, target_scores,
                                               target_scores_sum, fg_mask)
-            for i in range(batch_size):
+            for i in range(gt_pose.shape[0]):
                 if fg_mask[i].sum():
                     fg_pose = pred_pose[i][fg_mask[i]]
                     loss[3] += self.pose_loss(fg_pose, gt_pose[i])  # pose loss

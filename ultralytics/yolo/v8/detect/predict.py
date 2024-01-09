@@ -47,7 +47,7 @@ class DetectionPredictor(BasePredictor):
         return [LetterBox(self.imgsz, auto=False, stride=self.model.stride)(image=x) for x in im]
     
     def postprocess(self, preds, img, orig_imgs):
-        nc = 12
+        nc = 11
         """Postprocesses predictions and returns a list of Results objects."""
         preds = ops.non_max_suppression(preds[0][:,:nc+4,:],
                                         self.args.conf,

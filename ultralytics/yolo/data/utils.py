@@ -30,7 +30,7 @@ PIN_MEMORY = str(os.getenv('PIN_MEMORY', True)).lower() == 'true'  # global pin_
 IMAGENET_MEAN = 0.485, 0.456, 0.406  # RGB mean
 IMAGENET_STD = 0.229, 0.224, 0.225  # RGB standard deviation
 pose_dim = 3
-nc = 12
+nc = 11
 smile_cls = ['05','07','10','13','15']
 face_cls = ['06','08','11','14','16']
 project = {
@@ -56,7 +56,7 @@ def img2label_paths(img_paths):
     inner_clses = []
     label_list = []
     json_dir = '/data/shenfeihong/classification/network_res/'
-    json_dir = '/mnt/e/data/classification/new_label/network_res'
+    # json_dir = '/mnt/e/data/classification/new_label/network_res'
     for x in img_paths:
         label_list.append(os.path.join(json_dir, x.split('/')[-2], os.path.basename(x).replace('jpg', 'json')))
     return label_list
@@ -155,7 +155,12 @@ def verify_image_label(args):
             ne = 1  # label empty
             lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros(
                 (0, 5+pose_dim), dtype=np.float32)
+        if folder_name == '18':
+            ne = 1  # label empty
+            lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros(
+                (0, 5+pose_dim), dtype=np.float32)
     else:
+        nm
         nm = 1  # label missing
         lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros((0, 5+pose_dim), dtype=np.float32)
 

@@ -127,6 +127,7 @@ class BaseDataset(Dataset):
                 cls = self.labels[i]['cls']
                 pose = self.labels[i]['pose']
                 bboxes = self.labels[i]['bboxes']
+                poses = self.labels[i]['pose']
                 segments = self.labels[i]['segments']
                 keypoints = self.labels[i]['keypoints']
                 j = (cls == include_class_array).any(1)
@@ -146,7 +147,7 @@ class BaseDataset(Dataset):
         im, f, fn = self.ims[i], self.im_files[i], self.npy_files[i]
         path = '/ssd/gregory/classification/image_folder_04/'
         path = '/data/shenfeihong/classification/image_folder_04/'
-        path = '/mnt/e/data/classification/image_folder_04/'
+        # path = '/mnt/e/data/classification/image_folder_04/'
         f = os.path.join(path, f.split('/')[-3], f.split('/')[-2], f.split('/')[-1])
         if im is None:  # not cached in RAM
             if fn.exists():  # load npy

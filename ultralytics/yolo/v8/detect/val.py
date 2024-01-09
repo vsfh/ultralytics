@@ -57,7 +57,7 @@ class DetectionValidator(BaseValidator):
         return ('%22s' + '%11s' * 6) % ('Class', 'Images', 'Instances', 'Box(P', 'R', 'mAP50', 'mAP50-95)')
 
     def postprocess(self, preds):
-        nc = 12
+        nc = 11
         preds = ops.non_max_suppression(preds[0][:,:nc+4,:],
                                         self.args.conf,
                                         self.args.iou,
@@ -176,7 +176,7 @@ class DetectionValidator(BaseValidator):
                                  rect=self.args.rect,
                                  workers=self.args.workers,
                                  prefix=colorstr(f'{self.args.mode}: '),
-                                 shuffle=False,
+                                 shuffle=True,
                                  seed=self.args.seed)[0] if self.args.v5loader else \
             build_dataloader(self.args, batch_size, img_path=dataset_path, stride=gs, names=self.data['names'],
                              mode='val')[0]

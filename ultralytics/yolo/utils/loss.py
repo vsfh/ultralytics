@@ -71,7 +71,8 @@ class BboxLoss(nn.Module):
             loss_dfl = loss_dfl.sum() / target_scores_sum
         else:
             loss_dfl = torch.tensor(0.0).to(pred_dist.device)
-
+        if loss_iou>10000:
+            loss_iou = torch.tensor(10.0).to(pred_dist.device)
         return loss_iou, loss_dfl
 
     @staticmethod

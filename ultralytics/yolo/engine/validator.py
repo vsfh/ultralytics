@@ -169,7 +169,7 @@ class BaseValidator:
 
             self.update_metrics(preds, batch)
             # if self.args.plots and batch_i < 3:
-            if batch_i < 6:
+            if batch_i < 3:
                 self.plot_val_samples(batch, batch_i)
                 # self.plot_predictions(batch, preds, batch_i)
 

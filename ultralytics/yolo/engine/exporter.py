@@ -307,6 +307,7 @@ class Exporter:
 
         output_names = ['output', 'protos'] if isinstance(self.model, SegmentationModel) else ['output']
         dynamic = self.args.dynamic
+        print(dynamic, 'dynamic')
         if dynamic:
             dynamic = {'images': {0: 'batch', 2: 'height', 3: 'width'}}  # shape(1,3,640,640)
             if isinstance(self.model, SegmentationModel):
