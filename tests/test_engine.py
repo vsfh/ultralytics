@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from ultralytics.yolo.cfg import get_cfg
-from ultralytics.yolo.utils import DEFAULT_CFG, ROOT, SETTINGS
-from ultralytics.yolo.v8 import classify, detect, segment
+from ultralytics_ori.yolo.cfg import get_cfg
+from ultralytics_ori.yolo.utils import DEFAULT_CFG, ROOT, SETTINGS
+from ultralytics_ori.yolo.v8 import classify, detect, segment
 
 CFG_DET = 'yolov8n.yaml'
 CFG_SEG = 'yolov8n-seg.yaml'

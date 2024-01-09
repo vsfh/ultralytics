@@ -1,4 +1,4 @@
-from ultralytics import YOLO
+from ultralytics_ori import YOLO
 import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import os.path as osp
@@ -39,7 +39,7 @@ def load_cache():
     pass
 
 def check():
-    from ultralytics.yolo.utils.checks import check_font
+    from ultralytics_ori.yolo.utils.checks import check_font
     check_font('Arial.ttf')
     
 if __name__=='__main__':

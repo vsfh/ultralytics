@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from ultralytics.yolo.data.augment import LetterBox
+from ultralytics_ori.yolo.data.augment import LetterBox
 from make_data_folder.make_euler_json import draw_pose, R
 import onnxruntime as ort
 ort_session = ort.InferenceSession("/mnt/e/share/last.onnx", providers=["CUDAExecutionProvider"])

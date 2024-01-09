@@ -1,4 +1,4 @@
-from ultralytics import YOLO
+from ultralytics_ori import YOLO
 import os
 import os.path as osp
 import numpy as np
