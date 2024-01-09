@@ -7,9 +7,9 @@ import numpy as np
 import torch
 from PIL import Image
 
-from ultralytics import YOLO
-from ultralytics.yolo.data.build import load_inference_source
-from ultralytics.yolo.utils import LINUX, ROOT, SETTINGS, checks
+from ultralytics_ori import YOLO
+from ultralytics_ori.yolo.data.build import load_inference_source
+from ultralytics_ori.yolo.utils import LINUX, ROOT, SETTINGS, checks
 
 MODEL = Path(SETTINGS['weights_dir']) / 'yolov8n.pt'
 CFG = 'yolov8n.yaml'
