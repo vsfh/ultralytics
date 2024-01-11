@@ -7,7 +7,7 @@ import cv2
 import sys
 sys.path.append('.')
 from cls.trainer import ClassificationTrainerNew
-from cls.yolo import YOLO
+from yolo import YOLO
 
          
 def train_cls():
@@ -20,7 +20,7 @@ def train_cls():
     pass
 
 def train_new():
-    model = YOLO('/mnt/e/wsl/code/ultralytics/make_data_folder/cls.yaml')
+    model = YOLO('/home/gregory/code/ultralytics/make_data_folder/det.yaml')
     model.train()
     
 def predict_new():
@@ -39,37 +39,9 @@ def predict_new():
         # break
     
 
-def export_cls():
-    model = YOLO('/mnt/e/wsl/code/ultralytics/make_data_folder/runs/classify/train6/weights/last.pt')
+def export_new():
+    model = YOLO('/home/gregory/code/ultralytics/make_data_folder/runs/detect/train3/weights/last.pt')
     model.export(format="onnx")
-    
-def pred_cls():
-    import onnxruntime
-    import numpy as np
-    import os
-    def preprocess(img_path):
-        img = pad_and_resize(cv2.imread(img_path),(640,640))
-        input = np.ascontiguousarray(img[..., ::-1].transpose((2, 0, 1))) / 255
-        # im = torch.from_numpy(im).float()
-        return input.astype(np.float32), img
-    img_dir = '/mnt/e/data/classification/image_folder_04/val/03/'
-    onnx_path = '/mnt/e/wsl/code/ultralytics/make_data_folder/runs/classify/train6/weights/last.onnx'
-    onnx_sess = onnxruntime.InferenceSession(onnx_path, providers=['CUDAExecutionProvider','CPUExecutionProvider'])
-    
-    for img_name in os.listdir(img_dir):
-        # img_name = '58146373763750710_15950.jpg'
-        img_path = os.path.join(img_dir, img_name)
-        input, img = preprocess(img_path)
-        res = onnx_sess.run([], {'images': input[None]})[0]
-        print(res)
-        cls = np.argmax(res)
 
-        new_img = np.rot90(img, k=4-cls)
-        cv2.imshow('sa', new_img)
-        cv2.imshow('sb', img)
-        cv2.waitKey(0)
-        # break
-    pass
-    
 if __name__=='__main__':
-    predict_new()
+    export_new()

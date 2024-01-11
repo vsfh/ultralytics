@@ -2,7 +2,7 @@
 
 # from ultralytics.engine.model import Model
 from ultralytics.models import yolo
-from ultralytics.nn.tasks import ClassificationModel, DetectionModel, OBBModel, PoseModel, SegmentationModel
+from ultralytics.nn.tasks import ClassificationModel, OBBModel, PoseModel, SegmentationModel
 
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 
@@ -15,14 +15,17 @@ from ultralytics.cfg import TASK2DATA, get_cfg, get_save_dir
 from ultralytics.hub.utils import HUB_WEB_ROOT
 from ultralytics.nn.tasks import attempt_load_one_weight, guess_model_task, nn, yaml_model_load
 from ultralytics.utils import ASSETS, LOGGER, RANK, callbacks, checks, emojis, yaml_load
-
+from ultralytics.engine.exporter import Exporter
 import sys
 sys.path.append('.')
-from .trainer import ClassificationTrainerNew
-from .predictor import ClassificationPredictorNew
-from .validator import ClassificationValidatorNew
+from cls.trainer import ClassificationTrainerNew
+from cls.predictor import ClassificationPredictorNew
+from cls.validator import ClassificationValidatorNew
 
-DEFAULT_CFG_PATH = '/mnt/e/wsl/code/ultralytics/make_data_folder/cfg.yaml'
+from detect.train import DetectionTrainer, PoseDetectionModel
+import os
+DEFAULT_CFG_PATH = str(Path(os.path.abspath(__file__)).parent)+'/cfg.yaml'
+
 DEFAULT_CFG_DICT = yaml_load(DEFAULT_CFG_PATH)
 for k, v in DEFAULT_CFG_DICT.items():
     if isinstance(v, str) and v.lower() == 'none':
@@ -339,7 +342,6 @@ class Model(nn.Module):
             **kwargs : Any other args accepted by the Exporter. To see all args check 'configuration' section in docs.
         """
         self._check_is_pytorch_model()
-        from .exporter import Exporter
 
         custom = {'imgsz': self.model.args['imgsz'], 'batch': 1, 'data': None, 'verbose': False}  # method defaults
         args = {**self.overrides, **custom, **kwargs, 'mode': 'export'}  # highest priority args on the right
@@ -465,6 +467,7 @@ class Model(nn.Module):
         """
         raise NotImplementedError('Please provide task map for your model!')
 
+
 class YOLO(Model):
     """YOLO (You Only Look Once) object detection model."""
 
@@ -478,8 +481,8 @@ class YOLO(Model):
                 'validator': ClassificationValidatorNew,
                 'predictor': ClassificationPredictorNew, },
             'detect': {
-                'model': DetectionModel,
-                'trainer': yolo.detect.DetectionTrainer,
+                'model': PoseDetectionModel,
+                'trainer': DetectionTrainer,
                 'validator': yolo.detect.DetectionValidator,
                 'predictor': yolo.detect.DetectionPredictor, },
             'segment': {

@@ -1,24 +1,44 @@
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 
-import cv2
-import torch
-import os
 from ultralytics.engine.results import Results
-from ultralytics.utils import ops, yaml_load, IterableSimpleNamespace
-from pathlib import Path
-DEFAULT_CFG_PATH = str(Path(os.path.abspath(__file__)).parent.parent)+'/cfg.yaml'
-DEFAULT_CFG_DICT = yaml_load(DEFAULT_CFG_PATH)
-for k, v in DEFAULT_CFG_DICT.items():
-    if isinstance(v, str) and v.lower() == 'none':
-        DEFAULT_CFG_DICT[k] = None
-DEFAULT_CFG_KEYS = DEFAULT_CFG_DICT.keys()
-DEFAULT_CFG = IterableSimpleNamespace(**DEFAULT_CFG_DICT)
+from ultralytics.utils import ops
 
+# Ultralytics YOLO 🚀, AGPL-3.0 license
+"""
+Run prediction on images, videos, directories, globs, YouTube, webcam, streams, etc.
+
+Usage - sources:
+    $ yolo mode=predict model=yolov8n.pt source=0                               # webcam
+                                                img.jpg                         # image
+                                                vid.mp4                         # video
+                                                screen                          # screenshot
+                                                path/                           # directory
+                                                list.txt                        # list of images
+                                                list.streams                    # list of streams
+                                                'path/*.jpg'                    # glob
+                                                'https://youtu.be/LNwODJXcvt4'  # YouTube
+                                                'rtsp://example.com/media.mp4'  # RTSP, RTMP, HTTP, TCP stream
+
+Usage - formats:
+    $ yolo mode=predict model=yolov8n.pt                 # PyTorch
+                              yolov8n.torchscript        # TorchScript
+                              yolov8n.onnx               # ONNX Runtime or OpenCV DNN with dnn=True
+                              yolov8n_openvino_model     # OpenVINO
+                              yolov8n.engine             # TensorRT
+                              yolov8n.mlpackage          # CoreML (macOS-only)
+                              yolov8n_saved_model        # TensorFlow SavedModel
+                              yolov8n.pb                 # TensorFlow GraphDef
+                              yolov8n.tflite             # TensorFlow Lite
+                              yolov8n_edgetpu.tflite     # TensorFlow Edge TPU
+                              yolov8n_paddle_model       # PaddlePaddle
+"""
 import platform
 import threading
 from pathlib import Path
 
+import cv2
 import numpy as np
+import torch
 
 from ultralytics.cfg import get_cfg, get_save_dir
 from ultralytics.data import load_inference_source
@@ -28,6 +48,17 @@ from ultralytics.utils import LOGGER, MACOS, WINDOWS, callbacks, colorstr, ops
 from ultralytics.utils.checks import check_imgsz, check_imshow
 from ultralytics.utils.files import increment_path
 from ultralytics.utils.torch_utils import select_device, smart_inference_mode
+
+from ultralytics.utils import yaml_load, IterableSimpleNamespace
+import os
+DEFAULT_CFG_PATH = '/mnt/e/wsl/code/ultralytics/make_data_folder/cfg.yaml'
+DEFAULT_CFG_PATH = str(Path(os.path.abspath(__file__)).parent.parent)+'/cfg.yaml'
+DEFAULT_CFG_DICT = yaml_load(DEFAULT_CFG_PATH)
+for k, v in DEFAULT_CFG_DICT.items():
+    if isinstance(v, str) and v.lower() == 'none':
+        DEFAULT_CFG_DICT[k] = None
+DEFAULT_CFG_KEYS = DEFAULT_CFG_DICT.keys()
+DEFAULT_CFG = IterableSimpleNamespace(**DEFAULT_CFG_DICT)
 
 STREAM_WARNING = """
 WARNING ⚠️ inference results will accumulate in RAM unless `stream=True` is passed, causing potential out-of-memory
@@ -132,8 +163,7 @@ class BasePredictor:
             (list): A list of transformed images.
         """
         same_shapes = all(x.shape == im[0].shape for x in im)
-        # letterbox = LetterBox(self.imgsz, auto=same_shapes and self.model.pt, stride=self.model.stride)
-        letterbox = LetterBox(self.imgsz)
+        letterbox = LetterBox(self.imgsz, auto=same_shapes and self.model.pt, stride=self.model.stride)
         return [letterbox(image=x) for x in im]
 
     def write_results(self, idx, results, batch):
@@ -196,7 +226,9 @@ class BasePredictor:
     def setup_source(self, source):
         """Sets up source and inference mode."""
         self.imgsz = check_imgsz(self.args.imgsz, stride=self.model.stride, min_dim=2)  # check image size
-        self.transforms = None
+        self.transforms = getattr(
+            self.model.model, 'transforms', classify_transforms(
+                self.imgsz[0], crop_fraction=self.args.crop_fraction)) if self.args.task == 'classify' else None
         self.dataset = load_inference_source(source=source,
                                              imgsz=self.imgsz,
                                              vid_stride=self.args.vid_stride,
@@ -248,7 +280,6 @@ class BasePredictor:
                 # Inference
                 with profilers[1]:
                     preds = self.inference(im, *args, **kwargs)
-                    print(preds)
                     if self.args.embed:
                         yield from [preds] if isinstance(preds, torch.Tensor) else preds  # yield embedding tensors
                         continue
@@ -366,39 +397,41 @@ class BasePredictor:
         """Add callback."""
         self.callbacks[event].append(func)
 
-
-class ClassificationPredictorNew(BasePredictor):
+class DetectionPredictor(BasePredictor):
     """
-    A class extending the BasePredictor class for prediction based on a classification model.
-
-    Notes:
-        - Torchvision classification models can also be passed to the 'model' argument, i.e. model='resnet18'.
+    A class extending the BasePredictor class for prediction based on a detection model.
 
     Example:
         ```python
         from ultralytics.utils import ASSETS
-        from ultralytics.models.yolo.classify import ClassificationPredictor
+        from ultralytics.models.yolo.detect import DetectionPredictor
 
-        args = dict(model='yolov8n-cls.pt', source=ASSETS)
-        predictor = ClassificationPredictor(overrides=args)
+        args = dict(model='yolov8n.pt', source=ASSETS)
+        predictor = DetectionPredictor(overrides=args)
         predictor.predict_cli()
         ```
     """
 
-    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
-        """Initializes ClassificationPredictor setting the task to 'classify'."""
-        super().__init__(cfg, overrides, _callbacks)
-        self.args.task = 'classify'
-        self._legacy_transform_name = 'ultralytics.yolo.data.augment.ToTensor'
-
     def postprocess(self, preds, img, orig_imgs):
-        """Post-processes predictions to return Results objects."""
+        """Post-processes predictions and returns a list of Results objects."""
+        pose_dim = 4
+        if isinstance(preds, (list, tuple)):  # YOLOv8 model in validation model, output = (inference_out, loss_out)
+            preds = preds[0]  # select only inference output
+        nc = preds.shape[1]-4-pose_dim
+        preds = ops.non_max_suppression(preds[:,:nc+4,:],
+                                        self.args.conf,
+                                        self.args.iou,
+                                        agnostic=self.args.agnostic_nms,
+                                        max_det=self.args.max_det,
+                                        classes=self.args.classes)
+
         if not isinstance(orig_imgs, list):  # input images are a torch.Tensor, not a list
             orig_imgs = ops.convert_torch2numpy_batch(orig_imgs)
 
         results = []
         for i, pred in enumerate(preds):
             orig_img = orig_imgs[i]
+            pred[:, :4] = ops.scale_boxes(img.shape[2:], pred[:, :4], orig_img.shape)
             img_path = self.batch[0][i]
-            results.append(Results(orig_img, path=img_path, names=self.model.names, probs=pred))
+            results.append(Results(orig_img, path=img_path, names=self.model.names, boxes=pred))
         return results

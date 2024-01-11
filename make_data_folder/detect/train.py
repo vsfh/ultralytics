@@ -1,29 +1,18 @@
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 
-import os
-import torch
-import torchvision
+import math
+import random
+from copy import copy
 
-from ultralytics.data import ClassificationDataset, build_dataloader
-from ultralytics.engine.trainer import BaseTrainer
+import numpy as np
+import torch.nn as nn
+
+from ultralytics.data import build_dataloader, build_yolo_dataset
 from ultralytics.models import yolo
-from ultralytics.nn.tasks import ClassificationModel, attempt_load_one_weight
-from ultralytics.utils import DEFAULT_CFG, LOGGER, RANK, colorstr
-from ultralytics.utils.plotting import plot_images, plot_results
-from ultralytics.utils.torch_utils import is_parallel, strip_optimizer, torch_distributed_zero_first
-
-from ultralytics.nn.tasks import attempt_load_one_weight
-
-
-from ultralytics.cfg import get_cfg, get_save_dir
-from ultralytics.data.utils import check_cls_dataset, check_det_dataset
-from ultralytics.utils import (DEFAULT_CFG, LOGGER, RANK, TQDM, __version__, callbacks, clean_url, colorstr, emojis,
-                               yaml_save)
-
-from ultralytics.utils.checks import check_amp, check_file, check_imgsz, check_model_file_from_stem, print_args
-
-from ultralytics.utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, init_seeds, one_cycle, select_device,
-                                           strip_optimizer)
+from ultralytics.nn.tasks import DetectionModel
+from ultralytics.utils import LOGGER, RANK
+from ultralytics.utils.plotting import plot_images, plot_labels, plot_results
+from ultralytics.utils.torch_utils import de_parallel, torch_distributed_zero_first
 
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 """
@@ -33,7 +22,6 @@ Usage:
     $ yolo mode=train model=yolov8n.pt data=coco128.yaml imgsz=640 epochs=100 batch=16
 """
 
-import math
 import os
 import subprocess
 import time
@@ -50,16 +38,22 @@ from torch import nn, optim
 from ultralytics.cfg import get_cfg, get_save_dir
 from ultralytics.data.utils import check_cls_dataset, check_det_dataset
 from ultralytics.nn.tasks import attempt_load_one_weight, attempt_load_weights
-from ultralytics.utils import (LOGGER, RANK, TQDM, __version__, callbacks, clean_url, colorstr, emojis,
-                               yaml_save, yaml_load, IterableSimpleNamespace)
+from ultralytics.utils import (DEFAULT_CFG, LOGGER, RANK, TQDM, __version__, callbacks, clean_url, colorstr, emojis,
+                               yaml_save)
 from ultralytics.utils.autobatch import check_train_batch_size
 from ultralytics.utils.checks import check_amp, check_file, check_imgsz, check_model_file_from_stem, print_args
 from ultralytics.utils.dist import ddp_cleanup, generate_ddp_command
 from ultralytics.utils.files import get_latest_run
 from ultralytics.utils.torch_utils import (EarlyStopping, ModelEMA, de_parallel, init_seeds, one_cycle, select_device,
                                            strip_optimizer)
+import sys
+sys.path.append('.')
+from .dataset import YOLODataset
+from .val import DetectionValidator
 
+from ultralytics.utils import yaml_load, IterableSimpleNamespace
 DEFAULT_CFG_PATH = str(Path(os.path.abspath(__file__)).parent.parent)+'/cfg.yaml'
+
 DEFAULT_CFG_DICT = yaml_load(DEFAULT_CFG_PATH)
 for k, v in DEFAULT_CFG_DICT.items():
     if isinstance(v, str) and v.lower() == 'none':
@@ -67,7 +61,43 @@ for k, v in DEFAULT_CFG_DICT.items():
 DEFAULT_CFG_KEYS = DEFAULT_CFG_DICT.keys()
 DEFAULT_CFG = IterableSimpleNamespace(**DEFAULT_CFG_DICT)
 
-class BaseTrainerNew:
+class BaseTrainer:
+    """
+    BaseTrainer.
+
+    A base class for creating trainers.
+
+    Attributes:
+        args (SimpleNamespace): Configuration for the trainer.
+        validator (BaseValidator): Validator instance.
+        model (nn.Module): Model instance.
+        callbacks (defaultdict): Dictionary of callbacks.
+        save_dir (Path): Directory to save results.
+        wdir (Path): Directory to save weights.
+        last (Path): Path to the last checkpoint.
+        best (Path): Path to the best checkpoint.
+        save_period (int): Save checkpoint every x epochs (disabled if < 1).
+        batch_size (int): Batch size for training.
+        epochs (int): Number of epochs to train for.
+        start_epoch (int): Starting epoch for training.
+        device (torch.device): Device to use for training.
+        amp (bool): Flag to enable AMP (Automatic Mixed Precision).
+        scaler (amp.GradScaler): Gradient scaler for AMP.
+        data (str): Path to data.
+        trainset (torch.utils.data.Dataset): Training dataset.
+        testset (torch.utils.data.Dataset): Testing dataset.
+        ema (nn.Module): EMA (Exponential Moving Average) of the model.
+        resume (bool): Resume training from a checkpoint.
+        lf (nn.Module): Loss function.
+        scheduler (torch.optim.lr_scheduler._LRScheduler): Learning rate scheduler.
+        best_fitness (float): The best fitness value achieved.
+        fitness (float): Current fitness value.
+        loss (float): Current loss value.
+        tloss (float): Total loss value.
+        loss_names (list): List of loss names.
+        csv (Path): Path to results CSV file.
+    """
+
     def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
         """
         Initializes the BaseTrainer class.
@@ -107,26 +137,19 @@ class BaseTrainerNew:
 
         # Model and Dataset
         self.model = check_model_file_from_stem(self.args.model)  # add suffix, i.e. yolov8n -> yolov8n.pt
-        try:
-            if self.args.task == 'classify':
-                if self.args.data is None:
-                    self.data = None    # modify
-                else:
-                    self.data = check_cls_dataset(self.args.data)
-            elif self.args.data.split('.')[-1] in ('yaml', 'yml') or self.args.task in ('detect', 'segment', 'pose'):
-                self.data = check_det_dataset(self.args.data)
-                if 'yaml_file' in self.data:
-                    self.args.data = self.data['yaml_file']  # for validating 'yolo train data=url.zip' usage
-        except Exception as e:
-            raise RuntimeError(emojis(f"Dataset '{clean_url(self.args.data)}' error ❌ {e}")) from e
+        # try:
+        if self.args.task == 'classify':
+            self.data = check_cls_dataset(self.args.data)
+        elif self.args.data.split('.')[-1] in ('yaml', 'yml') or self.args.task in ('detect', 'segment', 'pose'):
+            # self.data = check_det_dataset(self.args.data)
+            self.data = {'train':'/data/shenfeihong/classification/03', 'val':'/data/shenfeihong/classification/03', 'names':{0:'a'}, 'nc':1}
+            if 'yaml_file' in self.data:
+                self.args.data = self.data['yaml_file']  # for validating 'yolo train data=url.zip' usage
+        # except Exception as e:
+        #     raise RuntimeError(emojis(f"Dataset '{clean_url(self.args.data)}' error ❌ {e}")) from e
 
-        if self.data is not None:
-            self.trainset, self.testset = self.get_dataset(self.data)
-        else:
-            self.trainset, self.testset = None, None    # modify
-            
+        self.trainset, self.testset = self.get_dataset(self.data)
         self.ema = None
-        self.resume = False
 
         # Optimization utils init
         self.lf = None
@@ -221,7 +244,7 @@ class BaseTrainerNew:
         self.run_callbacks('on_pretrain_routine_start')
         ckpt = self.setup_model()
         self.model = self.model.to(self.device)
-        self.set_model_attributes()
+        self.set_model_attributes()        
 
         # Freeze layers
         freeze_list = self.args.freeze if isinstance(
@@ -705,108 +728,85 @@ class BaseTrainerNew:
             f"{colorstr('optimizer:')} {type(optimizer).__name__}(lr={lr}, momentum={momentum}) with parameter groups "
             f'{len(g[1])} weight(decay=0.0), {len(g[0])} weight(decay={decay}), {len(g[2])} bias(decay=0.0)')
         return optimizer
-         
 
-class ClassificationTrainerNew(BaseTrainerNew):
+class DetectionTrainer(BaseTrainer):
     """
-    A class extending the BaseTrainer class for training based on a classification model.
-
-    Notes:
-        - Torchvision classification models can also be passed to the 'model' argument, i.e. model='resnet18'.
+    A class extending the BaseTrainer class for training based on a detection model.
 
     Example:
         ```python
-        from ultralytics.models.yolo.classify import ClassificationTrainer
+        from ultralytics.models.yolo.detect import DetectionTrainer
 
-        args = dict(model='yolov8n-cls.pt', data='imagenet10', epochs=3)
-        trainer = ClassificationTrainer(overrides=args)
+        args = dict(model='yolov8n.pt', data='coco8.yaml', epochs=3)
+        trainer = DetectionTrainer(overrides=args)
         trainer.train()
         ```
     """
 
-    def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
-        """Initialize a ClassificationTrainer object with optional configuration overrides and callbacks."""
-        if overrides is None:
-            overrides = {}
-        overrides['task'] = 'classify'
-        if overrides.get('imgsz') is None:
-            overrides['imgsz'] = 640
-        super().__init__(cfg, overrides, _callbacks)
-        self.data = {'nc':4, 'names':{0:'upper', 1:'left', 2:'down', 3:'right'}}
-
-    def set_model_attributes(self):
-        """Set the YOLO model's class names from the loaded dataset."""
-        self.model.names = self.data['names']
-
-    def get_model(self, cfg=None, weights=None, verbose=True):
-        """Returns a modified PyTorch model configured for training YOLO."""
-        model = ClassificationModel(cfg, nc=self.data['nc'], verbose=verbose and RANK == -1)
-        if weights:
-            model.load(weights)
-
-        for m in model.modules():
-            if not self.args.pretrained and hasattr(m, 'reset_parameters'):
-                m.reset_parameters()
-            if isinstance(m, torch.nn.Dropout) and self.args.dropout:
-                m.p = self.args.dropout  # set dropout
-        for p in model.parameters():
-            p.requires_grad = True  # for training
-        return model
-
-    def setup_model(self):
-        """Load, create or download model for any task."""
-        if isinstance(self.model, torch.nn.Module):  # if model is loaded beforehand. No setup needed
-            return
-
-        model, ckpt = str(self.model), None
-        # Load a YOLO model locally, from torchvision, or from Ultralytics assets
-        if model.endswith('.pt'):
-            self.model, ckpt = attempt_load_one_weight(model, device='cpu')
-            for p in self.model.parameters():
-                p.requires_grad = True  # for training
-        elif model.split('.')[-1] in ('yaml', 'yml'):
-            self.model = self.get_model(cfg=model)
-        elif model in torchvision.models.__dict__:
-            self.model = torchvision.models.__dict__[model](weights='IMAGENET1K_V1' if self.args.pretrained else None)
-        else:
-            FileNotFoundError(f'ERROR: model={model} not found locally or online. Please check model name.')
-        ClassificationModel.reshape_outputs(self.model, self.data['nc'])
-
-        return ckpt
-
     def build_dataset(self, img_path, mode='train', batch=None):
-        """Creates a ClassificationDataset instance given an image path, and mode (train/test etc.)."""
-        return ClassificationDatasetNew(mode=mode)
+        """
+        Build YOLO Dataset.
 
-    def get_dataloader(self, dataset_path=None, batch_size=16, rank=0, mode='train'):
-        """Returns PyTorch DataLoader with transforms to preprocess images for inference."""
+        Args:
+            img_path (str): Path to the folder containing images.
+            mode (str): `train` mode or `val` mode, users are able to customize different augmentations for each mode.
+            batch (int, optional): Size of batches, this is for `rect`. Defaults to None.
+        """
+        gs = max(int(de_parallel(self.model).stride.max() if self.model else 0), 32)
+        # return build_yolo_dataset(self.args, img_path, batch, self.data, mode=mode, rect=mode == 'val', stride=gs)
+        return YOLODataset(img_path=img_path,)
+
+    def get_dataloader(self, dataset_path, batch_size=16, rank=0, mode='train'):
+        """Construct and return dataloader."""
+        assert mode in ['train', 'val']
         with torch_distributed_zero_first(rank):  # init dataset *.cache only once if DDP
-            dataset = self.build_dataset(mode)
-
-        loader = build_dataloader(dataset, batch_size, self.args.workers, rank=rank)
-        # Attach inference transforms
-        # if mode != 'train':
-        #     if is_parallel(self.model):
-        #         self.model.module.transforms = loader.dataset.torch_transforms
-        #     else:
-        #         self.model.transforms = loader.dataset.torch_transforms
-        return loader
+            dataset = self.build_dataset(dataset_path, mode, batch_size)
+        shuffle = mode == 'train'
+        if getattr(dataset, 'rect', False) and shuffle:
+            LOGGER.warning("WARNING ⚠️ 'rect=True' is incompatible with DataLoader shuffle, setting shuffle=False")
+            shuffle = False
+        workers = self.args.workers if mode == 'train' else self.args.workers * 2
+        return build_dataloader(dataset, batch_size, workers, shuffle, rank)  # return dataloader
 
     def preprocess_batch(self, batch):
-        """Preprocesses a batch of images and classes."""
-        batch['img'] = batch['img'].to(self.device)
-        batch['cls'] = batch['cls'].to(self.device)
+        """Preprocesses a batch of images by scaling and converting to float."""
+        batch['img'] = batch['img'].to(self.device, non_blocking=True).float() / 255
+        if self.args.multi_scale:
+            imgs = batch['img']
+            sz = (random.randrange(self.args.imgsz * 0.5, self.args.imgsz * 1.5 + self.stride) // self.stride *
+                  self.stride)  # size
+            sf = sz / max(imgs.shape[2:])  # scale factor
+            if sf != 1:
+                ns = [math.ceil(x * sf / self.stride) * self.stride
+                      for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
+                imgs = nn.functional.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
+            batch['img'] = imgs
         return batch
 
-    def progress_string(self):
-        """Returns a formatted string showing training progress."""
-        return ('\n' + '%11s' * (4 + len(self.loss_names))) % \
-            ('Epoch', 'GPU_mem', *self.loss_names, 'Instances', 'Size')
+    def set_model_attributes(self):
+        """Nl = de_parallel(self.model).model[-1].nl  # number of detection layers (to scale hyps)."""
+        # self.args.box *= 3 / nl  # scale to layers
+        # self.args.cls *= self.data["nc"] / 80 * 3 / nl  # scale to classes and layers
+        # self.args.cls *= (self.args.imgsz / 640) ** 2 * 3 / nl  # scale to image size and layers
+        self.model.nc = self.data['nc']  # attach number of classes to model
+        self.model.names = self.data['names']  # attach class names to model
+        self.model.args = self.args  # attach hyperparameters to model
+        # TODO: self.model.class_weights = labels_to_class_weights(dataset.labels, nc).to(device) * nc
+
+    def get_model(self, cfg=None, weights=None, verbose=True):
+        """Return a YOLO detection model."""
+        model = PoseDetectionModel(cfg, nc=self.data['nc'], verbose=verbose and RANK == -1)
+        if weights:
+            model.load(weights)
+        return model
 
     def get_validator(self):
-        """Returns an instance of ClassificationValidator for validation."""
-        self.loss_names = ['loss']
-        return yolo.classify.ClassificationValidator(self.test_loader, self.save_dir)
+        """Returns a DetectionValidator for YOLO model validation."""
+        self.loss_names = 'box_loss', 'cls_loss', 'dfl_loss'
+        return DetectionValidator(self.test_loader,
+                                              save_dir=self.save_dir,
+                                              args=copy(self.args),
+                                              _callbacks=self.callbacks)
 
     def label_loss_items(self, loss_items=None, prefix='train'):
         """
@@ -815,81 +815,281 @@ class ClassificationTrainerNew(BaseTrainerNew):
         Not needed for classification but necessary for segmentation & detection
         """
         keys = [f'{prefix}/{x}' for x in self.loss_names]
-        if loss_items is None:
+        if loss_items is not None:
+            loss_items = [round(float(x), 5) for x in loss_items]  # convert tensors to 5 decimal place floats
+            return dict(zip(keys, loss_items))
+        else:
             return keys
-        loss_items = [round(float(loss_items), 5)]
-        return dict(zip(keys, loss_items))
 
-    def plot_metrics(self):
-        """Plots metrics from a CSV file."""
-        plot_results(file=self.csv, classify=True, on_plot=self.on_plot)  # save results.png
-
-    def final_eval(self):
-        """Evaluate trained model and save validation results."""
-        for f in self.last, self.best:
-            if f.exists():
-                strip_optimizer(f)  # strip optimizers
-                if f is self.best:
-                    LOGGER.info(f'\nValidating {f}...')
-                    self.validator.args.data = self.args.data
-                    self.validator.args.plots = self.args.plots
-                    self.metrics = self.validator(model=f)
-                    self.metrics.pop('fitness', None)
-                    self.run_callbacks('on_fit_epoch_end')
-        LOGGER.info(f"Results saved to {colorstr('bold', self.save_dir)}")
+    def progress_string(self):
+        """Returns a formatted string of training progress with epoch, GPU memory, loss, instances and size."""
+        return ('\n' + '%11s' *
+                (4 + len(self.loss_names))) % ('Epoch', 'GPU_mem', *self.loss_names, 'Instances', 'Size')
 
     def plot_training_samples(self, batch, ni):
         """Plots training samples with their annotations."""
-        plot_images(
-            images=batch['img'],
-            batch_idx=torch.arange(len(batch['img'])),
-            cls=batch['cls'].view(-1),  # warning: use .view(), not .squeeze() for Classify models
-            fname=self.save_dir / f'train_batch{ni}.jpg',
-            on_plot=self.on_plot)
+        plot_images(images=batch['img'],
+                    batch_idx=batch['batch_idx'],
+                    cls=batch['cls'].squeeze(-1),
+                    bboxes=batch['bboxes'],
+                    paths=batch['im_file'],
+                    fname=self.save_dir / f'train_batch{ni}.jpg',
+                    on_plot=self.on_plot)
 
-from PIL import Image
-import cv2
-import numpy as np
-import random
-from ultralytics.data.augment import LetterBox
+    def plot_metrics(self):
+        """Plots metrics from a CSV file."""
+        plot_results(file=self.csv, on_plot=self.on_plot)  # save results.png
 
-class ClassificationDatasetNew(torch.utils.data.Dataset):
-    def __init__(self, mode='train'):
-        self.path = '/mnt/e/data/classification/toy/03'
-        if mode=='train':
-            self.images = os.listdir(self.path)[:-200]
-        else:
-            self.images = os.listdir(self.path)[-200:]
-        self.torch_transforms = torchvision.transforms.ToTensor()
-        self.letterbox = LetterBox((640, 640))
+    def plot_training_labels(self):
+        """Create a labeled training plot of the YOLO model."""
+        boxes = np.concatenate([lb['bboxes'] for lb in self.train_loader.dataset.labels], 0)
+        cls = np.concatenate([lb['cls'] for lb in self.train_loader.dataset.labels], 0)
+        plot_labels(boxes, cls.squeeze(), names=self.data['names'], save_dir=self.save_dir, on_plot=self.on_plot)
+
+from ultralytics.utils.loss import v8DetectionLoss
+from ultralytics.utils.tal import make_anchors, dist2bbox
+from ultralytics.utils.torch_utils import initialize_weights
+from ultralytics.nn.modules.head import Detect
+from ultralytics.nn.modules.conv import Conv
+from ultralytics.nn.tasks import *
+class DetectPose(Detect):
+    def __init__(self, nc=80, ch=()):  # detection layer
+        super().__init__(nc=nc, ch=ch)
+        c4 = 16
+        self.pose_dim = 4
+        self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, self.pose_dim, 1)) for x in ch)
+        self.no = self.nc + self.reg_max * 4 + self.pose_dim
         
-    def __len__(self):
-        return len(self.images)
+    def forward(self, x):
+        """Concatenates and returns predicted bounding boxes and class probabilities."""
+        for i in range(self.nl):
+            x[i] = torch.cat((self.cv2[i](x[i]), self.cv3[i](x[i]), self.cv4[i](x[i])), 1)
+        if self.training:  # Training path
+            return x
+
+        # Inference path
+        shape = x[0].shape  # BCHW
+        x_cat = torch.cat([xi.view(shape[0], self.no, -1) for xi in x], 2)
+        if self.dynamic or self.shape != shape:
+            self.anchors, self.strides = (x.transpose(0, 1) for x in make_anchors(x, self.stride, 0.5))
+            self.shape = shape
+
+        if self.export and self.format in ('saved_model', 'pb', 'tflite', 'edgetpu', 'tfjs'):  # avoid TF FlexSplitV ops
+            box = x_cat[:, :self.reg_max * 4]
+            cls = x_cat[:, self.reg_max * 4:self.reg_max * 4+self.nc]
+            pose = x_cat[:, self.reg_max * 4+self.nc:]
+        else:
+            box, cls, pose = x_cat.split((self.reg_max * 4, self.nc, self.pose_dim), 1)
+        dbox = self.decode_bboxes(box)
+
+        if self.export and self.format in ('tflite', 'edgetpu'):
+            # Precompute normalization factor to increase numerical stability
+            # See https://github.com/ultralytics/ultralytics/issues/7371
+            img_h = shape[2]
+            img_w = shape[3]
+            img_size = torch.tensor([img_w, img_h, img_w, img_h], device=box.device).reshape(1, 4, 1)
+            norm = self.strides / (self.stride[0] * img_size)
+            dbox = dist2bbox(self.dfl(box) * norm, self.anchors.unsqueeze(0) * norm[:, :2], xywh=True, dim=1)
+
+        y = torch.cat((dbox, cls.sigmoid(), pose), 1)
+        return y if self.export else (y, x)
+
+class PoseDetectionModel(DetectionModel):
+    def __init__(self, cfg='yolov8n.yaml', ch=3, nc=None, verbose=True):  # model, input channels, number of classes
+        """Initialize the YOLOv8 detection model with the given config and parameters."""
+        super().__init__(cfg=cfg, ch=ch, nc=nc, verbose=verbose)
+        self.yaml = cfg if isinstance(cfg, dict) else yaml_model_load(cfg)  # cfg dict
+
+        # Define model
+        ch = self.yaml['ch'] = self.yaml.get('ch', ch)  # input channels
+        if nc and nc != self.yaml['nc']:
+            LOGGER.info(f"Overriding model.yaml nc={self.yaml['nc']} with nc={nc}")
+            self.yaml['nc'] = nc  # override YAML value
+        self.model, self.save = self.parse_model(deepcopy(self.yaml), ch=ch, verbose=verbose)  # model, savelist
+        self.names = {i: f'{i}' for i in range(self.yaml['nc'])}  # default names dict
+        self.inplace = self.yaml.get('inplace', True)
+
+        # Build strides
+        m = self.model[-1]  # Detect()
+        if isinstance(m, (Detect, Segment, Pose, OBB)):
+            s = 256  # 2x min stride
+            m.inplace = self.inplace
+            forward = lambda x: self.forward(x)[0] if isinstance(m, (Segment, Pose, OBB)) else self.forward(x)
+            m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
+            self.stride = m.stride
+            m.bias_init()  # only run once
+        else:
+            self.stride = torch.Tensor([32])  # default stride for i.e. RTDETR
+
+        # Init weights, biases
+        initialize_weights(self)
+        if verbose:
+            self.info()
+            LOGGER.info('')
+
+    def parse_model(self, d, ch, verbose=True):  # model_dict, input_channels(3)
+        """Parse a YOLO model.yaml dictionary into a PyTorch model."""
+        import ast
+
+        # Args
+        max_channels = float('inf')
+        nc, act, scales = (d.get(x) for x in ('nc', 'activation', 'scales'))
+        depth, width, kpt_shape = (d.get(x, 1.0) for x in ('depth_multiple', 'width_multiple', 'kpt_shape'))
+        if scales:
+            scale = d.get('scale')
+            if not scale:
+                scale = tuple(scales.keys())[0]
+                LOGGER.warning(f"WARNING ⚠️ no model scale passed. Assuming scale='{scale}'.")
+            depth, width, max_channels = scales[scale]
+
+        if act:
+            Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
+            if verbose:
+                LOGGER.info(f"{colorstr('activation:')} {act}")  # print
+
+        if verbose:
+            LOGGER.info(f"\n{'':>3}{'from':>20}{'n':>3}{'params':>10}  {'module':<45}{'arguments':<30}")
+        ch = [ch]
+        layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
+        for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
+            # m = getattr(torch.nn, m[3:]) if 'nn.' in m else globals()[m]  # get module
+            if 'nn.' in m:
+                m = getattr(torch.nn, m[3:])
+            elif m in globals().keys() and m != 'Detect':
+                m = globals()[m]
+            else:
+                m = DetectPose
+            for j, a in enumerate(args):
+                if isinstance(a, str):
+                    with contextlib.suppress(ValueError):
+                        args[j] = locals()[a] if a in locals() else ast.literal_eval(a)
+
+            n = n_ = max(round(n * depth), 1) if n > 1 else n  # depth gain
+            if m in (Classify, Conv, ConvTranspose, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, Focus,
+                    BottleneckCSP, C1, C2, C2f, C3, C3TR, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x, RepC3):
+                c1, c2 = ch[f], args[0]
+                if c2 != nc:  # if c2 not equal to number of classes (i.e. for Classify() output)
+                    c2 = make_divisible(min(c2, max_channels) * width, 8)
+
+                args = [c1, c2, *args[1:]]
+                if m in (BottleneckCSP, C1, C2, C2f, C3, C3TR, C3Ghost, C3x, RepC3):
+                    args.insert(2, n)  # number of repeats
+                    n = 1
+            elif m is AIFI:
+                args = [ch[f], *args]
+            elif m in (HGStem, HGBlock):
+                c1, cm, c2 = ch[f], args[0], args[1]
+                args = [c1, cm, c2, *args[2:]]
+                if m is HGBlock:
+                    args.insert(4, n)  # number of repeats
+                    n = 1
+            elif m is ResNetLayer:
+                c2 = args[1] if args[3] else args[1] * 4
+            elif m is nn.BatchNorm2d:
+                args = [ch[f]]
+            elif m is Concat:
+                c2 = sum(ch[x] for x in f)
+            elif m in (Detect, DetectPose, Segment, Pose, OBB):
+                args.append([ch[x] for x in f])
+                if m is Segment:
+                    args[2] = make_divisible(min(args[2], max_channels) * width, 8)
+            elif m is RTDETRDecoder:  # special case, channels arg must be passed in index 1
+                args.insert(1, [ch[x] for x in f])
+            else:
+                c2 = ch[f]
+
+            m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
+            t = str(m)[8:-2].replace('__main__.', '')  # module type
+            m.np = sum(x.numel() for x in m_.parameters())  # number params
+            m_.i, m_.f, m_.type = i, f, t  # attach index, 'from' index, type
+            if verbose:
+                LOGGER.info(f'{i:>3}{str(f):>20}{n_:>3}{m.np:10.0f}  {t:<45}{str(args):<30}')  # print
+            save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
+            layers.append(m_)
+            if i == 0:
+                ch = []
+            ch.append(c2)
+        return nn.Sequential(*layers), sorted(save)
+
+    @staticmethod
+    def _descale_pred(p, flips, scale, img_size, dim=1):
+        """De-scale predictions following augmented inference (inverse operation)."""
+        pose_dim = 4
+        p[:, :4] /= scale  # de-scale
+        x, y, wh, cls, pose = p.split((1, 1, 2, p.shape[dim] - 4 - pose_dim, pose_dim), dim)
+        if flips == 2:
+            y = img_size[0] - y  # de-flip ud
+        elif flips == 3:
+            x = img_size[1] - x  # de-flip lr
+        return torch.cat((x, y, wh, cls, pose), dim)  
+     
+    def init_criterion(self):
+        """Initialize the loss criterion for the DetectionModel."""
+        return PoseDetectionLoss(self) 
     
-    def __getitem__(self, index, new_shape=(640,640), show=False):
-        image = self.images[index]
-        image_path = os.path.join(self.path, image)
-        im = cv2.imread(image_path)
-        im = self.letterbox(image=im)
-        R = np.eye(3)
-        a = random.choice([0, 1, 2, 3])  # add 90deg rotations to small rotations
-        R[:2] = cv2.getRotationMatrix2D(angle=a*90, center=(320, 320), scale=1)
-        im = cv2.warpAffine(im, R[:2], dsize=new_shape, borderValue=(0, 0, 0))
-
-        im = im[..., ::-1].transpose((2,0,1))  # BGR to RGB, HWC to CHW, (3, h, w)
-        im = np.ascontiguousarray(im)  # contiguous
-        im = torch.from_numpy(im)
-
-        im = im.float()  # uint8 to fp16/32
-        im /= 255  # 0 - 255 to 0.0 - 1.0
-
-        return {'img': im, 'cls': a}
     
-if __name__=='__main__':
-    a = Image.open('/mnt/e/data/classification/image_folder_04/val/03/58126931504899536_12162.jpg')
-    a = cv2.imread('/mnt/e/data/classification/image_folder_04/val/03/58126931504899536_12162.jpg')
-    cv2.imshow('img', np.array(a))
-    cv2.waitKey(0)
-    ds = ClassificationDatasetNew()
-    for i in ds:
-        continue
+class PoseDetectionLoss(v8DetectionLoss):
+    def __init__(self, model):
+        super().__init__(model)
+        self.pose_dim = 4
+        self.no = self.nc + self.reg_max * 4 + self.pose_dim
+        
+    def pose_loss(self, pred_pose, gt_pose):
+        loss = 0
+        for single_pred_pose in pred_pose:
+            loss += torch.mean((single_pred_pose - gt_pose)**2)
+        return loss 
+    
+    def __call__(self, preds, batch):
+        """Calculate the sum of the loss for box, cls and dfl multiplied by batch size."""
+        hyp_pose = 5
+        loss = torch.zeros(4, device=self.device)  # box, cls, dfl
+        feats = preds[1] if isinstance(preds, tuple) else preds
+        pred_distri, pred_scores, pred_poses = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
+            (self.reg_max * 4, self.nc, self.pose_dim), 1)
+
+        pred_scores = pred_scores.permute(0, 2, 1).contiguous()
+        pred_distri = pred_distri.permute(0, 2, 1).contiguous()
+        pred_poses = pred_poses.permute(0, 2, 1).contiguous()
+
+        dtype = pred_scores.dtype
+        batch_size = pred_scores.shape[0]
+        imgsz = torch.tensor(feats[0].shape[2:], device=self.device, dtype=dtype) * self.stride[0]  # image size (h,w)
+        anchor_points, stride_tensor = make_anchors(feats, self.stride, 0.5)
+
+        # Targets
+        targets = torch.cat((batch['batch_idx'].view(-1, 1), batch['cls'].view(-1, 1), batch['bboxes']), 1)
+        targets = self.preprocess(targets.to(self.device), batch_size, scale_tensor=imgsz[[1, 0, 1, 0]])
+        gt_labels, gt_bboxes = targets.split((1, 4), 2)  # cls, xyxy
+        mask_gt = gt_bboxes.sum(2, keepdim=True).gt_(0)
+
+        # Pboxes
+        pred_bboxes = self.bbox_decode(anchor_points, pred_distri)  # xyxy, (b, h*w, 4)
+
+        _, target_bboxes, target_scores, fg_mask, _ = self.assigner(
+            pred_scores.detach().sigmoid(), (pred_bboxes.detach() * stride_tensor).type(gt_bboxes.dtype),
+            anchor_points * stride_tensor, gt_labels, gt_bboxes, mask_gt)
+
+        target_scores_sum = max(target_scores.sum(), 1)
+
+        # Cls loss
+        # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
+        loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
+        gt_poses = batch['poses']
+
+        # Bbox loss
+        if fg_mask.sum():
+            target_bboxes /= stride_tensor
+            loss[0], loss[2] = self.bbox_loss(pred_distri, pred_bboxes, anchor_points, target_bboxes, target_scores,
+                                              target_scores_sum, fg_mask)
+            for i in range(len(gt_poses)):
+                if fg_mask[i].sum():
+                    fg_pose = pred_poses[i][fg_mask[i]]
+                    loss[3] += self.pose_loss(fg_pose, gt_poses[i].to(self.device).float())  # pose loss
+                    
+        loss[0] *= self.hyp.box  # box gain
+        loss[1] *= self.hyp.cls  # cls gain
+        loss[2] *= self.hyp.dfl  # dfl gain
+        loss[3] *= hyp_pose
+
+        return loss.sum() * batch_size, loss.detach()  # loss(box, cls, dfl)
