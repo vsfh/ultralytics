@@ -190,7 +190,6 @@ def draw_pose(img, pose_ori, tdx=None, tdy=None, size = 100):
     cv2.line(img, (int(tdx), int(tdy)), (int(x3),int(y3)),(0,255,0),4)
     return img
 from tqdm import tqdm
-<<<<<<< HEAD
 def vis_json(sub_folder):
     number = sub_folder[-2:]
     with open(f'/mnt/e/data/classification/{number}.txt', 'w') as err_f:
@@ -219,32 +218,6 @@ def vis_json(sub_folder):
             except:
                 print(file)
                 continue
-=======
-def vis_json():
-    sub_folder = 'train/08'
-    with open('/mnt/e/data/classification/face_pose.txt', 'w') as err_f:
-        for file_name in tqdm(os.listdir(f'/mnt/e/data/classification/image_folder_04/{sub_folder}')[:500]):
-            file = f'{sub_folder}/{file_name}'
-            label_path = opj(LABEL_DIR,sub_folder[-2:] ,file_name.replace('jpg', 'json'))
-            img_path = opj(IMG_DIR ,file)
-            with open(label_path, 'r') as f:
-                context = json.load(f)
-
-            k = np.random.randint(-3,3)
-            img = cv2.imread(img_path)
-            # if (context['xyxy'][2]-context['xyxy'][0])*(context['xyxy'][3]-context['xyxy'][1])/(img.shape[0]*img.shape[1]) > 0.95:
-                # os.remove(img_path)  
-            cv2.rectangle(img, (int(context['xyxy'][0]), int(context['xyxy'][1])), (int(context['xyxy'][2]), int(context['xyxy'][3])), (255,0,0), 2)
-            img = cv2.resize(img, (640, int(img.shape[0]/img.shape[1]*640)), interpolation=cv2.INTER_LINEAR)
-            # img = np.rot90(img, k)
-            euler = np.array(context['euler'])[0]
-            if np.abs(euler[1])<70:
-                err_f.write(file_name+'\n')
-            # rot_matrix = R.from_euler('xyz', euler, degrees=True).as_matrix()
-            # img_ = draw_pose(img, rot_matrix)
-            # cv2.imshow('img', img_)
-            # cv2.waitKey(0)
->>>>>>> bd5d8d4b2d2e3e54dfaab26e1747d56c6351799b
         err_f.close()
     return
 

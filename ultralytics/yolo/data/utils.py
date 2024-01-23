@@ -106,10 +106,7 @@ def verify_image_label(args):
         nf = 1  # label found
         with open(lb_file) as f:
             
-            if folder_name == '19':
-                bbox = [0.1, 0.1, 0.9, 0.9]
-                pose = [0, 0, np.abs(np.random.randn())]
-            elif folder_name == '18':
+            if folder_name == '18':
                 bbox = [0.01, 0.01, 0.98, 0.98]
                 pose = [0, 0, 0]
             else:
@@ -117,7 +114,10 @@ def verify_image_label(args):
                 bbox = [number for number in context['xyxy']]
                 bbox[0], bbox[1] = max(0, bbox[0])/shape[1], max(0, bbox[1])/shape[0]
                 bbox[2], bbox[3] = min(shape[1], bbox[2])/shape[1], min(shape[0], bbox[3])/shape[0]
-                pose = context['euler']
+                if folder_name == '19':
+                    pose = [0, 0, 0]
+                else:
+                    pose = context['euler']
             if folder_name in smile_cls:
                 cls = 9
             elif folder_name in face_cls:
@@ -160,7 +160,6 @@ def verify_image_label(args):
             lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros(
                 (0, 5+pose_dim), dtype=np.float32)
     else:
-        nm
         nm = 1  # label missing
         lb = np.zeros((0, (5 + pose_dim)), dtype=np.float32) if keypoint else np.zeros((0, 5+pose_dim), dtype=np.float32)
 
