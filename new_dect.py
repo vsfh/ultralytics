@@ -14,8 +14,8 @@ def train():
     path = '/data/shenfeihong/classification/image_folder_04/'
     # path = '/mnt/e/data/classification/image_folder_04/'
 
-    model.train(data=path, device='1,2,3')
-    # model.train(data=path)
+    # model.train(data=path, device='1,2,3')
+    model.train(data=path)
     
 def test():
     path = 'runs/detect/train7/weights/last.pt'
@@ -45,4 +45,4 @@ def check():
     check_font('Arial.ttf')
     
 if __name__=='__main__':
-    export()
+    train()

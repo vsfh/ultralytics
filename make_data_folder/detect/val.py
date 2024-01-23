@@ -10,28 +10,8 @@ from ultralytics.data import build_dataloader, build_yolo_dataset, converter
 from ultralytics.utils import LOGGER, ops
 from ultralytics.utils.checks import check_requirements
 from ultralytics.utils.metrics import ConfusionMatrix, DetMetrics, box_iou
-from ultralytics.utils.plotting import output_to_target, plot_images
+from ultralytics.utils.plotting import output_to_target
 
-# Ultralytics YOLO 🚀, AGPL-3.0 license
-"""
-Check a model's accuracy on a test or val split of a dataset.
-
-Usage:
-    $ yolo mode=val model=yolov8n.pt data=coco128.yaml imgsz=640
-
-Usage - formats:
-    $ yolo mode=val model=yolov8n.pt                 # PyTorch
-                          yolov8n.torchscript        # TorchScript
-                          yolov8n.onnx               # ONNX Runtime or OpenCV DNN with dnn=True
-                          yolov8n_openvino_model     # OpenVINO
-                          yolov8n.engine             # TensorRT
-                          yolov8n.mlpackage          # CoreML (macOS-only)
-                          yolov8n_saved_model        # TensorFlow SavedModel
-                          yolov8n.pb                 # TensorFlow GraphDef
-                          yolov8n.tflite             # TensorFlow Lite
-                          yolov8n_edgetpu.tflite     # TensorFlow Edge TPU
-                          yolov8n_paddle_model       # PaddlePaddle
-"""
 import json
 import time
 from pathlib import Path
@@ -44,9 +24,297 @@ from ultralytics.data.utils import check_cls_dataset, check_det_dataset
 from ultralytics.nn.autobackend import AutoBackend
 from ultralytics.utils import LOGGER, TQDM, callbacks, colorstr, emojis
 from ultralytics.utils.checks import check_imgsz
-from ultralytics.utils.ops import Profile
 from ultralytics.utils.torch_utils import de_parallel, select_device, smart_inference_mode
+from ultralytics.utils.plotting import *
+from ultralytics.utils.ops import *
 
+class PoseAnnotator(Annotator):
+    def pose_label(self, pose, box, size = 100):
+        arr_a = pose[:3] / np.linalg.norm(pose[:3])
+        arr_b = pose[-3:] / np.linalg.norm(pose[3:])
+        arr_c = np.cross(arr_a, arr_b)
+        pose = np.stack((arr_a, arr_b, arr_c), 1)
+        tdx = int((box[0]+box[2])/2)
+        tdy = int((box[1]+box[3])/2)
+        
+        if len(pose.shape) == 3:
+            pose = pose[0].copy()
+        else:
+            pose = pose.copy()
+        pose[:,1] *= -1
+
+        # X-Axis pointing to the right. Drawn in red
+        x_axis = pose[:, 0]
+        x1 = size * x_axis[0] + tdx
+        y1 = size * x_axis[1] + tdy
+
+        # Y-Axis | Drawn in green
+        #        v
+        y_axis = pose[:, 1]
+        x2 = size * y_axis[0] + tdx
+        y2 = size * y_axis[1] + tdy
+
+        # Z-Axis (out of the screen). Drawn in blue
+        z_axis = pose[:, 2]
+        x3 = size * z_axis[0] + tdx
+        y3 = size * z_axis[1] + tdy
+        self.draw.line([(int(tdx), int(tdy)), (int(x1),int(y1))], fill='red')
+        self.draw.line([(int(tdx), int(tdy)), (int(x2),int(y2))], fill='blue')
+        self.draw.line([(int(tdx), int(tdy)), (int(x3),int(y3))], fill='green')
+        
+        
+@threaded
+def plot_images(images,
+                batch_idx,
+                cls,
+                bboxes=np.zeros(0, dtype=np.float32),
+                confs=None,
+                masks=np.zeros(0, dtype=np.uint8),
+                kpts=np.zeros((0, 51), dtype=np.float32),
+                paths=None,
+                fname='images.jpg',
+                names=None,
+                on_plot=None,
+                max_subplots=16,
+                save=True,
+                poses=None,):
+    """Plot image grid with labels."""
+    if isinstance(images, torch.Tensor):
+        images = images.cpu().float().numpy()
+    if isinstance(cls, torch.Tensor):
+        cls = cls.cpu().numpy()
+    if isinstance(bboxes, torch.Tensor):
+        bboxes = bboxes.cpu().numpy()
+    if isinstance(masks, torch.Tensor):
+        masks = masks.cpu().numpy().astype(int)
+    if isinstance(kpts, torch.Tensor):
+        kpts = kpts.cpu().numpy()
+    if isinstance(batch_idx, torch.Tensor):
+        batch_idx = batch_idx.cpu().numpy()
+
+    max_size = 1920  # max image size
+    bs, _, h, w = images.shape  # batch size, _, height, width
+    bs = min(bs, max_subplots)  # limit plot images
+    ns = np.ceil(bs ** 0.5)  # number of subplots (square)
+    if np.max(images[0]) <= 1:
+        images *= 255  # de-normalise (optional)
+
+    # Build Image
+    mosaic = np.full((int(ns * h), int(ns * w), 3), 255, dtype=np.uint8)  # init
+    for i in range(bs):
+        x, y = int(w * (i // ns)), int(h * (i % ns))  # block origin
+        mosaic[y:y + h, x:x + w, :] = images[i].transpose(1, 2, 0)
+
+    # Resize (optional)
+    scale = max_size / ns / max(h, w)
+    if scale < 1:
+        h = math.ceil(scale * h)
+        w = math.ceil(scale * w)
+        mosaic = cv2.resize(mosaic, tuple(int(x * ns) for x in (w, h)))
+
+    # Annotate
+    fs = int((h + w) * ns * 0.01)  # font size
+    annotator = PoseAnnotator(mosaic, line_width=round(fs / 10), font_size=fs, pil=True, example=names)
+    for i in range(bs):
+        x, y = int(w * (i // ns)), int(h * (i % ns))  # block origin
+        annotator.rectangle([x, y, x + w, y + h], None, (255, 255, 255), width=2)  # borders
+        if paths:
+            annotator.text((x + 5, y + 5), text=Path(paths[i]).name[:40], txt_color=(220, 220, 220))  # filenames
+        if len(cls) > 0:
+            idx = batch_idx == i
+            classes = cls[idx].astype('int')
+            labels = confs is None
+
+            if len(bboxes):
+                boxes = bboxes[idx]
+                conf = confs[idx] if confs is not None else None  # check for confidence presence (label vs pred)
+                if len(boxes):
+                    if boxes[:, :4].max() <= 1.1:  # if normalized with tolerance 0.1
+                        boxes[:, [0, 2]] *= w  # scale to pixels
+                        boxes[:, [1, 3]] *= h
+                    elif scale < 1:  # absolute coords need scale if image scales
+                        boxes[:, :4] *= scale
+                boxes[:, 0] += x
+                boxes[:, 1] += y
+                is_obb = boxes.shape[-1] == 5  # xywhr
+                boxes = ops.xywhr2xyxyxyxy(boxes) if is_obb else ops.xywh2xyxy(boxes)
+                for j, box in enumerate(boxes.astype(np.int64).tolist()):
+                    c = classes[j]
+                    color = colors(c)
+                    c = names.get(c, c) if names else c
+                    if labels or conf[j] > 0.25:  # 0.25 conf thresh
+                        label = f'{c}' if labels else f'{c} {conf[j]:.1f}'
+                        annotator.box_label(box, label, color=color, rotated=is_obb)
+                        if not poses is None:
+                            pose = poses[i]
+                            if isinstance(pose, torch.Tensor):
+                                pose = pose.cpu().numpy()
+                            if len(pose.shape)!=1:
+                                pose = pose[j]
+                            annotator.pose_label(pose, box)
+                            
+
+            elif len(classes):
+                for c in classes:
+                    color = colors(c)
+                    c = names.get(c, c) if names else c
+                    annotator.text((x, y), f'{c}', txt_color=color, box_style=True)
+
+            # Plot keypoints
+            if len(kpts):
+                kpts_ = kpts[idx].copy()
+                if len(kpts_):
+                    if kpts_[..., 0].max() <= 1.01 or kpts_[..., 1].max() <= 1.01:  # if normalized with tolerance .01
+                        kpts_[..., 0] *= w  # scale to pixels
+                        kpts_[..., 1] *= h
+                    elif scale < 1:  # absolute coords need scale if image scales
+                        kpts_ *= scale
+                kpts_[..., 0] += x
+                kpts_[..., 1] += y
+                for j in range(len(kpts_)):
+                    if labels or conf[j] > 0.25:  # 0.25 conf thresh
+                        annotator.kpts(kpts_[j])
+
+            # Plot masks
+            if len(masks):
+                if idx.shape[0] == masks.shape[0]:  # overlap_masks=False
+                    image_masks = masks[idx]
+                else:  # overlap_masks=True
+                    image_masks = masks[[i]]  # (1, 640, 640)
+                    nl = idx.sum()
+                    index = np.arange(nl).reshape((nl, 1, 1)) + 1
+                    image_masks = np.repeat(image_masks, nl, axis=0)
+                    image_masks = np.where(image_masks == index, 1.0, 0.0)
+
+                im = np.asarray(annotator.im).copy()
+                for j in range(len(image_masks)):
+                    if labels or conf[j] > 0.25:  # 0.25 conf thresh
+                        color = colors(classes[j])
+                        mh, mw = image_masks[j].shape
+                        if mh != h or mw != w:
+                            mask = image_masks[j].astype(np.uint8)
+                            mask = cv2.resize(mask, (w, h))
+                            mask = mask.astype(bool)
+                        else:
+                            mask = image_masks[j].astype(bool)
+                        with contextlib.suppress(Exception):
+                            im[y:y + h, x:x + w, :][mask] = im[y:y + h, x:x + w, :][mask] * 0.4 + np.array(color) * 0.6
+                annotator.fromarray(im)
+    if save:
+        annotator.im.save(fname)  # save
+        if on_plot:
+            on_plot(fname)
+    else:
+        return np.asarray(annotator.im)
+    
+def non_max_suppression(
+    prediction,
+    conf_thres=0.25,
+    iou_thres=0.45,
+    classes=None,
+    agnostic=False,
+    multi_label=False,
+    labels=(),
+    max_det=300,
+    nc=0,  # number of classes (optional)
+    max_time_img=0.05,
+    max_nms=30000,
+    max_wh=7680,
+    rotated=False,
+    contain_pose=False
+):
+    # Checks
+    pose_dim = 6
+    assert 0 <= conf_thres <= 1, f'Invalid Confidence threshold {conf_thres}, valid values are between 0.0 and 1.0'
+    assert 0 <= iou_thres <= 1, f'Invalid IoU {iou_thres}, valid values are between 0.0 and 1.0'
+    if isinstance(prediction, (list, tuple)):  # YOLOv8 model in validation model, output = (inference_out, loss_out)
+        prediction = prediction[0]  # select only inference output
+    if contain_pose:
+        poses_output = [torch.zeros((0, pose_dim), device=prediction.device)] * prediction.shape[0]
+        poses = prediction[:, -pose_dim:, :]
+        prediction = prediction[:,:-pose_dim,:]
+    bs = prediction.shape[0]  # batch size
+    nc = nc or (prediction.shape[1] - 4)  # number of classes
+    nm = prediction.shape[1] - nc - 4
+    mi = 4 + nc  # mask start index
+    xc = prediction[:, 4:mi].amax(1) > conf_thres  # candidates
+
+    # Settings
+    # min_wh = 2  # (pixels) minimum box width and height
+    time_limit = 0.5 + max_time_img * bs  # seconds to quit after
+    multi_label &= nc > 1  # multiple labels per box (adds 0.5ms/img)
+
+    prediction = prediction.transpose(-1, -2)  # shape(1,84,6300) to shape(1,6300,84)
+    if contain_pose:
+        poses = poses.transpose(-1, -2)
+    if not rotated:
+        prediction[..., :4] = xywh2xyxy(prediction[..., :4])  # xywh to xyxy
+
+    t = time.time()
+    output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
+    for xi, x in enumerate(prediction):  # image index, image inference
+        # Apply constraints
+        # x[((x[:, 2:4] < min_wh) | (x[:, 2:4] > max_wh)).any(1), 4] = 0  # width-height
+        x = x[xc[xi]]  # confidence
+        if contain_pose:
+            pose = poses[xi]
+            pose = pose[xc[xi]]
+        # Cat apriori labels if autolabelling
+        if labels and len(labels[xi]) and not rotated:
+            lb = labels[xi]
+            v = torch.zeros((len(lb), nc + nm + 4), device=x.device)
+            v[:, :4] = xywh2xyxy(lb[:, 1:5])  # box
+            v[range(len(lb)), lb[:, 0].long() + 4] = 1.0  # cls
+            x = torch.cat((x, v), 0)
+
+        # If none remain process next image
+        if not x.shape[0]:
+            continue
+
+        # Detections matrix nx6 (xyxy, conf, cls)
+        box, cls, mask = x.split((4, nc, nm), 1)
+
+        if multi_label:
+            i, j = torch.where(cls > conf_thres)
+            x = torch.cat((box[i], x[i, 4 + j, None], j[:, None].float(), mask[i]), 1)
+        else:  # best class only
+            conf, j = cls.max(1, keepdim=True)
+            x = torch.cat((box, conf, j.float(), mask), 1)[conf.view(-1) > conf_thres]
+
+        # Filter by class
+        if classes is not None:
+            x = x[(x[:, 5:6] == torch.tensor(classes, device=x.device)).any(1)]
+
+        # Check shape
+        n = x.shape[0]  # number of boxes
+        if not n:  # no boxes
+            continue
+        if n > max_nms:  # excess boxes
+            if contain_pose:
+                pose = pose[x[:, 4].argsort(descending=True)[:max_nms]]
+            x = x[x[:, 4].argsort(descending=True)[:max_nms]]  # sort by confidence and remove excess boxes
+
+
+        # Batched NMS
+        c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
+        scores = x[:, 4]  # scores
+        if rotated:
+            boxes = torch.cat((x[:, :2] + c, x[:, 2:4], x[:, -1:]), dim=-1)  # xywhr
+            i = nms_rotated(boxes, scores, iou_thres)
+        else:
+            boxes = x[:, :4] + c  # boxes (offset by class)
+            i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
+        i = i[:max_det]  # limit detections
+
+        output[xi] = x[i]
+        if contain_pose:
+            poses_output[xi] = pose[i]
+        if (time.time() - t) > time_limit:
+            LOGGER.warning(f'WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded')
+            break  # time limit exceeded
+    if contain_pose:
+        return output, poses_output
+    return output
 
 class BaseValidator:
     """
@@ -190,12 +458,12 @@ class BaseValidator:
 
             # Postprocess
             with dt[3]:
-                preds = self.postprocess(preds)
+                preds, poses = self.postprocess(preds)
 
             self.update_metrics(preds, batch)
             if self.args.plots and batch_i < 3:
                 self.plot_val_samples(batch, batch_i)
-                self.plot_predictions(batch, preds, batch_i)
+                self.plot_predictions(batch, preds, batch_i, poses)
 
             self.run_callbacks('on_val_batch_end')
         stats = self.get_stats()
@@ -328,7 +596,7 @@ class BaseValidator:
         """Plots validation samples during training."""
         pass
 
-    def plot_predictions(self, batch, preds, ni):
+    def plot_predictions(self, batch, preds, ni, poses=None):
         """Plots YOLO model predictions on batch images."""
         pass
 
@@ -405,15 +673,16 @@ class DetectionValidator(BaseValidator):
 
     def postprocess(self, preds):
         """Apply Non-maximum suppression to prediction outputs."""
-        pose_dim = 4
-        nc = preds[0].shape[1]-4-pose_dim
-        return ops.non_max_suppression(preds[0][:,:nc+4,:],
+        # pose_dim = 6
+        # nc = preds[0].shape[1]-4-pose_dim
+        return non_max_suppression(preds,
                                        self.args.conf,
                                        self.args.iou,
                                        labels=self.lb,
                                        multi_label=True,
                                        agnostic=self.args.single_cls,
-                                       max_det=self.args.max_det)
+                                       max_det=self.args.max_det,
+                                       contain_pose=True)
 
 
     def _prepare_batch(self, si, batch):
@@ -554,16 +823,18 @@ class DetectionValidator(BaseValidator):
                     paths=batch['im_file'],
                     fname=self.save_dir / f'val_batch{ni}_labels.jpg',
                     names=self.names,
-                    on_plot=self.on_plot)
+                    on_plot=self.on_plot,
+                    poses=batch['poses'])
 
-    def plot_predictions(self, batch, preds, ni):
+    def plot_predictions(self, batch, preds, ni, poses=None):
         """Plots predicted bounding boxes on input images and saves the result."""
         plot_images(batch['img'],
                     *output_to_target(preds, max_det=self.args.max_det),
                     paths=batch['im_file'],
                     fname=self.save_dir / f'val_batch{ni}_pred.jpg',
                     names=self.names,
-                    on_plot=self.on_plot)  # pred
+                    on_plot=self.on_plot,
+                    poses=torch.cat(poses,0).cpu().numpy() if not poses is None else None)  # pred
 
     def save_one_txt(self, predn, save_conf, shape, file):
         """Save YOLO detections to a txt file in normalized coordinates in a specific format."""

@@ -9,15 +9,6 @@ sys.path.append('.')
 from cls.trainer import ClassificationTrainerNew
 from yolo import YOLO
 
-         
-def train_cls():
-    model_cfg_dict = yaml_model_load('/mnt/e/wsl/code/ultralytics/make_data_folder/cls.yaml')
-    default_cfg_dict = yaml_load('/mnt/e/wsl/code/ultralytics/make_data_folder/cfg.yaml')
-    
-    trainer = ClassificationTrainerNew(default_cfg_dict)
-    trainer.model = trainer.get_model(cfg=model_cfg_dict)
-    trainer.train()
-    pass
 
 def train_new():
     model = YOLO('/home/gregory/code/ultralytics/make_data_folder/det.yaml')
@@ -40,8 +31,8 @@ def predict_new():
     
 
 def export_new():
-    model = YOLO('/home/gregory/code/ultralytics/make_data_folder/runs/detect/train3/weights/last.pt')
+    model = YOLO('/home/gregory/code/ultralytics/make_data_folder/runs/detect/train2/weights/best.pt')
     model.export(format="onnx")
 
 if __name__=='__main__':
-    export_new()
+    train_new()

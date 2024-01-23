@@ -25,6 +25,8 @@ from copy import deepcopy
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from typing import Any, Optional
+import json
+from scipy.spatial.transform import Rotation as R
 
 import cv2
 import numpy as np
@@ -341,13 +343,9 @@ class BboxesPose(Bboxes):
         x1y1 = np.ones((n,3))
         x2y2 = np.ones((n,3))
         
-        if angle == -90:
+        if angle == 270:
             x1y1[:,:2] = self.bboxes[:,[0,3]]
             x2y2[:,:2] = self.bboxes[:,[2,1]]
-
-        elif angle == -180:
-            x1y1[:,:2] = self.bboxes[:,[2,3]]
-            x2y2[:,:2] = self.bboxes[:,[0,1]]
         
         elif angle == 90:
             x1y1[:,:2] = self.bboxes[:,[2,1]]
@@ -414,8 +412,6 @@ class InstancesPose(Instances):
             bbox_format=bbox_format,
             normalized=self.normalized,
         ) 
-import json
-pose_dim = 3
 class RandomRot:
     """Resize image and padding for detection, instance segmentation, pose"""
 
@@ -430,7 +426,7 @@ class RandomRot:
         shape = img.shape[:2]  # current shape [height, width]
 
         R = np.eye(3)
-        angle = random.choice([-180, -90, 0, 90, 180])  # add 90deg rotations to small rotations
+        angle = random.choice([0, 90, 180 , 270])  # add 90deg rotations to small rotations
         R[:2] = cv2.getRotationMatrix2D(angle=angle, center=(int(shape[0]//2), int(shape[1]//2)), scale=1)
         
         img = cv2.warpAffine(img, R[:2], dsize=shape, borderValue=(0, 0, 0))
@@ -441,11 +437,10 @@ class RandomRot:
         labels['img'] = img
         return labels
 
-from scipy.spatial.transform import Rotation as R
 class FormatPose:
     def __init__(self, **kwargs):
         self.format = Format(**kwargs)
-        self.pose_dim = 4
+        self.pose_dim = 6
     def __call__(self, labels):
         former_label = self.format(labels.copy())
         instances = labels.pop('instances')
@@ -454,7 +449,8 @@ class FormatPose:
             poses_list = []
             for i in range(len(instances.poses)):
                 single_pose = instances.poses[i]
-                poses_list.append(R.from_euler('xyz', single_pose, degrees=True).as_quat().reshape(4,))
+                matrix = R.from_euler('xyz', single_pose, degrees=True).as_matrix()
+                poses_list.append([np.concatenate((matrix[:,0], matrix[:,1]),0)])
             poses_arr = np.concatenate(poses_list, 0, dtype=np.float32)
                 
             former_label['poses'] = torch.from_numpy(poses_arr) 
@@ -486,6 +482,7 @@ class YOLODataset(BaseDataset):
     def verify_image_label(self, args):
         from ultralytics.data.utils import exif_size, ImageOps, segments2boxes
         """Verify one image-label pair."""
+        pose_dim = 3
         im_file, lb_file, prefix, keypoint, num_cls, nkpt, ndim = args
         # Number (missing, found, empty, corrupt), message, segments, keypoints
         nm, nf, ne, nc, msg, segments, keypoints = 0, 0, 0, 0, '', [], None

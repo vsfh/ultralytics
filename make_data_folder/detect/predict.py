@@ -414,7 +414,7 @@ class DetectionPredictor(BasePredictor):
 
     def postprocess(self, preds, img, orig_imgs):
         """Post-processes predictions and returns a list of Results objects."""
-        pose_dim = 4
+        pose_dim = 6
         if isinstance(preds, (list, tuple)):  # YOLOv8 model in validation model, output = (inference_out, loss_out)
             preds = preds[0]  # select only inference output
         nc = preds.shape[1]-4-pose_dim

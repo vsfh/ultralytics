@@ -259,10 +259,6 @@ class Annotator:
         self.draw.line([(int(tdx), int(tdy)), (int(x2),int(y2))], fill='blue')
         self.draw.line([(int(tdx), int(tdy)), (int(x3),int(y3))], fill='green')
         
-        
-        # cv2.line(self.im, (int(tdx), int(tdy)), (int(x1),int(y1)),(0,0,255),4)
-        # cv2.line(self.im, (int(tdx), int(tdy)), (int(x2),int(y2)),(0,255,0),4)
-        # cv2.line(self.im, (int(tdx), int(tdy)), (int(x3),int(y3)),(255,0,0),4)
 
 @TryExcept()  # known issue https://github.com/ultralytics/yolov5/issues/5395
 @plt_settings()

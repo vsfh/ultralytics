@@ -322,6 +322,7 @@ class BaseTrainer:
             self._setup_ddp(world_size)
         self._setup_train(world_size)
 
+        npl = 2000
         nb = len(self.train_loader)  # number of batches
         nw = max(round(self.args.warmup_epochs * nb), 100) if self.args.warmup_epochs > 0 else -1  # warmup iterations
         last_opt_step = -1
@@ -372,7 +373,10 @@ class BaseTrainer:
                 # Forward
                 with torch.cuda.amp.autocast(self.amp):
                     batch = self.preprocess_batch(batch)
-                    self.loss, self.loss_items = self.model(batch)
+                    if ni > npl:
+                        self.loss, self.loss_items = self.model(batch, pose_loss=True)
+                    else:
+                        self.loss, self.loss_items = self.model(batch)
                     if RANK != -1:
                         self.loss *= world_size
                     self.tloss = (self.tloss * i + self.loss_items) / (i + 1) if self.tloss is not None \
@@ -856,7 +860,7 @@ class DetectPose(Detect):
     def __init__(self, nc=80, ch=()):  # detection layer
         super().__init__(nc=nc, ch=ch)
         c4 = 16
-        self.pose_dim = 4
+        self.pose_dim = 6
         self.cv4 = nn.ModuleList(nn.Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, self.pose_dim, 1)) for x in ch)
         self.no = self.nc + self.reg_max * 4 + self.pose_dim
         
@@ -1014,7 +1018,7 @@ class PoseDetectionModel(DetectionModel):
     @staticmethod
     def _descale_pred(p, flips, scale, img_size, dim=1):
         """De-scale predictions following augmented inference (inverse operation)."""
-        pose_dim = 4
+        pose_dim = 6
         p[:, :4] /= scale  # de-scale
         x, y, wh, cls, pose = p.split((1, 1, 2, p.shape[dim] - 4 - pose_dim, pose_dim), dim)
         if flips == 2:
@@ -1022,27 +1026,118 @@ class PoseDetectionModel(DetectionModel):
         elif flips == 3:
             x = img_size[1] - x  # de-flip lr
         return torch.cat((x, y, wh, cls, pose), dim)  
-     
+    
+    def forward(self, x, *args, **kwargs):
+        if isinstance(x, dict):  # for cases of training and validating while training.
+            return self.loss(x, *args, **kwargs)
+        return self.predict(x, *args, **kwargs)
+    
+    def loss(self, batch, preds=None, pose_loss=False):
+        if not hasattr(self, 'criterion'):
+            self.criterion = self.init_criterion()
+
+        preds = self.forward(batch['img']) if preds is None else preds
+        return self.criterion(preds, batch, pose_loss=pose_loss)
+    
     def init_criterion(self):
         """Initialize the loss criterion for the DetectionModel."""
         return PoseDetectionLoss(self) 
     
+def normalize_vector(v):
+    v_mag = torch.linalg.norm(v, dim=1, keepdim=True)
+    v = v / v_mag.clip(min=1e-8)
+    return v
+
+
+def compute_rotation_matrix_from_ortho6d(poses):
+    x_raw = poses[:, 0:3]  # (b, 3)
+    y_raw = poses[:, 3:6]  # (b, 3)
+
+    x = normalize_vector(x_raw)  # (b, 3)
+    y = normalize_vector(y_raw)  # (b, 3)
+    z = torch.cross(x, y)
+
+    matrix = torch.stack((x, y, z), dim=2)  # (b, 3, 3)
+    return matrix
     
+def bgdR(Rgts,Rps):
+    eps = 1e-6
+    Rds = torch.bmm(Rgts.permute(0,2,1),Rps)
+    Rt = torch.sum(Rds[:,torch.eye(3).bool()],1) #batch trace
+    theta = torch.clamp(0.5*(Rt-1), -1+eps, 1-eps)
+    return torch.acos(theta)
+
+from ultralytics.utils.tal import TaskAlignedAssigner
+class PoseAssigner(TaskAlignedAssigner):
+    @torch.no_grad()
+    def forward(self, pd_scores, pd_bboxes, anc_points, gt_labels, gt_bboxes, gt_poses, mask_gt):
+        self.bs = pd_scores.size(0)
+        self.n_max_boxes = gt_bboxes.size(1)
+
+        if self.n_max_boxes == 0:
+            device = gt_bboxes.device
+            return (torch.full_like(pd_scores[..., 0], self.bg_idx).to(device), torch.zeros_like(pd_bboxes).to(device),
+                    torch.zeros_like(pd_scores).to(device), torch.zeros_like(pd_scores[..., 0]).to(device),
+                    torch.zeros_like(pd_scores[..., 0]).to(device))
+
+        mask_pos, align_metric, overlaps = self.get_pos_mask(pd_scores, pd_bboxes, gt_labels, gt_bboxes, anc_points,
+                                                             mask_gt)
+
+        target_gt_idx, fg_mask, mask_pos = self.select_highest_overlaps(mask_pos, overlaps, self.n_max_boxes)
+
+        # Assigned target
+        target_labels, target_bboxes, target_scores = self.get_targets(gt_labels, gt_bboxes, gt_poses, target_gt_idx, fg_mask)
+
+        # Normalize
+        align_metric *= mask_pos
+        pos_align_metrics = align_metric.amax(dim=-1, keepdim=True)  # b, max_num_obj
+        pos_overlaps = (overlaps * mask_pos).amax(dim=-1, keepdim=True)  # b, max_num_obj
+        norm_align_metric = (align_metric * pos_overlaps / (pos_align_metrics + self.eps)).amax(-2).unsqueeze(-1)
+        target_scores = target_scores * norm_align_metric
+
+        return target_labels, target_bboxes, target_scores, fg_mask.bool(), target_gt_idx
+    
+    def get_targets(self, gt_labels, gt_bboxes, gt_poses, target_gt_idx, fg_mask):
+
+        # Assigned target labels, (b, 1)
+        batch_ind = torch.arange(end=self.bs, dtype=torch.int64, device=gt_labels.device)[..., None]
+        target_gt_idx = target_gt_idx + batch_ind * self.n_max_boxes  # (b, h*w)
+        target_labels = gt_labels.long().flatten()[target_gt_idx]  # (b, h*w)
+
+        # Assigned target boxes, (b, max_num_obj, 4) -> (b, h*w, 4)
+        target_bboxes = gt_bboxes.view(-1, gt_bboxes.shape[-1])[target_gt_idx]
+        target_poses = gt_poses.view(-1, gt_poses.shape[-1])[target_gt_idx]
+
+        # Assigned target scores
+        target_labels.clamp_(0)
+
+        # 10x faster than F.one_hot()
+        target_scores = torch.zeros((target_labels.shape[0], target_labels.shape[1], self.num_classes),
+                                    dtype=torch.int64,
+                                    device=target_labels.device)  # (b, h*w, 80)
+        target_scores.scatter_(2, target_labels.unsqueeze(-1), 1)
+
+        fg_scores_mask = fg_mask[:, :, None].repeat(1, 1, self.num_classes)  # (b, h*w, 80)
+        target_scores = torch.where(fg_scores_mask > 0, target_scores, 0)
+
+        return target_labels, (target_bboxes, target_poses), target_scores
 class PoseDetectionLoss(v8DetectionLoss):
     def __init__(self, model):
         super().__init__(model)
-        self.pose_dim = 4
+        self.assigner = PoseAssigner(topk=10, num_classes=self.nc, alpha=0.5, beta=6.0)
+        self.pose_dim = 6
         self.no = self.nc + self.reg_max * 4 + self.pose_dim
         
     def pose_loss(self, pred_pose, gt_pose):
-        loss = 0
-        for single_pred_pose in pred_pose:
-            loss += torch.mean((single_pred_pose - gt_pose)**2)
+        # gt_pose = gt_pose.repeat(pred_pose.shape[0],1)
+        pred_matrix = compute_rotation_matrix_from_ortho6d(pred_pose.view(-1, pred_pose.shape[-1]))
+        gt_matrix = compute_rotation_matrix_from_ortho6d(gt_pose.view(-1, pred_pose.shape[-1]))
+        loss = bgdR(pred_matrix, gt_matrix).sum()
         return loss 
     
-    def __call__(self, preds, batch):
+    def __call__(self, preds, batch, pose_loss=False):
         """Calculate the sum of the loss for box, cls and dfl multiplied by batch size."""
-        hyp_pose = 5
+        hyp_pose = 1.5
         loss = torch.zeros(4, device=self.device)  # box, cls, dfl
         feats = preds[1] if isinstance(preds, tuple) else preds
         pred_distri, pred_scores, pred_poses = torch.cat([xi.view(feats[0].shape[0], self.no, -1) for xi in feats], 2).split(
@@ -1062,30 +1157,32 @@ class PoseDetectionLoss(v8DetectionLoss):
         targets = self.preprocess(targets.to(self.device), batch_size, scale_tensor=imgsz[[1, 0, 1, 0]])
         gt_labels, gt_bboxes = targets.split((1, 4), 2)  # cls, xyxy
         mask_gt = gt_bboxes.sum(2, keepdim=True).gt_(0)
+        gt_poses = torch.cat(batch['poses'], 0).to(self.device).type(dtype)
+        
 
         # Pboxes
         pred_bboxes = self.bbox_decode(anchor_points, pred_distri)  # xyxy, (b, h*w, 4)
 
-        _, target_bboxes, target_scores, fg_mask, _ = self.assigner(
+        _, target_bboxes_poses, target_scores, fg_mask, _ = self.assigner(
             pred_scores.detach().sigmoid(), (pred_bboxes.detach() * stride_tensor).type(gt_bboxes.dtype),
-            anchor_points * stride_tensor, gt_labels, gt_bboxes, mask_gt)
+            anchor_points * stride_tensor, gt_labels, gt_bboxes, gt_poses, mask_gt)
 
         target_scores_sum = max(target_scores.sum(), 1)
-
+        target_bboxes, target_poses = target_bboxes_poses
         # Cls loss
         # loss[1] = self.varifocal_loss(pred_scores, target_scores, target_labels) / target_scores_sum  # VFL way
         loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
-        gt_poses = batch['poses']
-
+        # loss[3] = self.pose_loss(target_poses, pred_poses)
         # Bbox loss
         if fg_mask.sum():
             target_bboxes /= stride_tensor
             loss[0], loss[2] = self.bbox_loss(pred_distri, pred_bboxes, anchor_points, target_bboxes, target_scores,
                                               target_scores_sum, fg_mask)
+            # if pose_loss:
             for i in range(len(gt_poses)):
                 if fg_mask[i].sum():
-                    fg_pose = pred_poses[i][fg_mask[i]]
-                    loss[3] += self.pose_loss(fg_pose, gt_poses[i].to(self.device).float())  # pose loss
+                    # fg_pose = pred_poses[i][fg_mask[i]]
+                    loss[3] += self.pose_loss(target_poses[i][fg_mask[i]], pred_poses[i][fg_mask[i]])  # pose loss
                     
         loss[0] *= self.hyp.box  # box gain
         loss[1] *= self.hyp.cls  # cls gain
